@@ -270,7 +270,7 @@ export async function play(ctx) {
   const earDefenders = sd => { const h = makeSordin(THREE, { earX: 0.082, earY: 0.072, apexY: 0.205 }); sd.rig.B.Head.add(h); return h; };
   earDefenders(man);
   // the instructor has no hood: a smaller head, cups higher over the ears, band over the crown (author, 18 XI)
-  const instEars = (() => { const h = makeSordin(THREE, window.__earTune || { earX: 0.074, earY: 0.105, apexY: 0.215 }); inst.rig.B.Head.add(h); return h; })();
+  const instEars = (() => { const h = makeSordin(THREE, window.__earTune || { earX: 0.074, earY: 0.105, apexY: 0.302 }); inst.rig.B.Head.add(h); return h; })();
   const handsMan = makeGloves(THREE, man, gloveG.scene, { clone: SkeletonUtils.clone }), handsInst = makeGloves(THREE, inst, gloveG.scene, { clone: SkeletonUtils.clone });
 
   // measure poses once: where the eye (headfront) sits in the prone pose, relative to the root
@@ -911,24 +911,30 @@ function woodlandCanvas(n = 512) {
   return c;
 }
 function makeBag(THREE, need) {
-  const L = 0.20, Wd = 0.13, T = 0.06;
-  const geo = new THREE.BoxGeometry(L, T, Wd, 20, 3, 14), p = geo.attributes.position;
-  for (let i = 0; i < p.count; i++) {                                     // puff: full thickness in the middle, thin seams at the edges
-    const fx = 1 - Math.pow(Math.abs(p.getX(i)) / (L / 2), 4), fz = 1 - Math.pow(Math.abs(p.getZ(i)) / (Wd / 2), 4);
-    p.setY(i, p.getY(i) * Math.max(0.12, Math.sqrt(Math.max(0, fx * fz))));
+  // a soft, part-filled sack lying flat (author, 18 XI: not a balloon): flat top falling off only near the seams, sides
+  // slumping outwards at mid-height, a groove along the middle where the stock has sunk in with the cloth bulging either
+  // side, small creases; it is as thick as the butt needs plus the depth of the groove
+  const DENT = 0.022, GROOVE = 0.03, L = 0.22, Wd = 0.15, T = need + DENT;
+  const geo = new THREE.BoxGeometry(L, T, Wd, 28, 6, 20), p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i), ax = Math.abs(x) / (L / 2), az = Math.abs(z) / (Wd / 2), hy = y / (T / 2);
+    const edge = Math.max(0.2, Math.min(1, (1 - Math.pow(ax, 8)) * (1 - Math.pow(az, 6))));
+    let ny = hy > 0 ? y * edge : y;                                                             // the bottom rests flat
+    if (hy > 0.99) {
+      const gz = Math.abs(z) / GROOVE, along = 1 - Math.pow(ax, 6);
+      ny -= DENT * along * Math.max(0, 1 - gz * gz);                                            // the stock's groove
+      ny += 0.006 * along * Math.exp(-Math.pow((Math.abs(z) - GROOVE * 1.25) / 0.012, 2));      // cloth pushed up beside it
+      ny += 0.0015 * Math.sin(x * 140 + z * 35) * Math.sin(z * 90) * edge;                      // creases
+    }
+    const bulge = 1 + 0.07 * (1 - hy * hy);                                                      // sides slump out
+    p.setX(i, x * bulge); p.setZ(i, z * bulge); p.setY(i, ny + T / 2);
   }
   geo.computeVertexNormals();
   const tex = new THREE.CanvasTexture(woodlandCanvas()); tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(0.6, 0.6);
-  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 });
-  const pillow = new THREE.Mesh(geo, mat); pillow.castShadow = pillow.receiveShadow = true;
+  const pillow = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 })); pillow.castShadow = pillow.receiveShadow = true;
   const loop = new THREE.Mesh(new THREE.TorusGeometry(0.012, 0.0025, 6, 16), new THREE.MeshStandardMaterial({ color: 0x8a7a55, roughness: 0.9 }));
-  loop.position.set(-L / 2 - 0.008, 0, Wd / 2 - 0.02); loop.rotation.x = Math.PI / 2;
-  const inner = new THREE.Group(); inner.add(pillow, loop);
-  const onSide = need > 0.095;                                            // butt too high for the flat bag: stand it on its long edge
-  if (onSide) inner.rotation.x = Math.PI / 2;
-  inner.position.y = (onSide ? Wd : T) / 2;
-  const mid = new THREE.Group(); mid.rotation.y = Math.PI / 2; mid.add(inner);   // long side along the rifle (group +Z = forward)
-  const g = new THREE.Group(); g.add(mid); g.scale.y = need / (onSide ? Wd : T);  // squeezed or filled to the butt height
-  g.userData.onSide = onSide; return g;
+  loop.position.set(-L / 2 - 0.008, 0.02, Wd / 2 - 0.02); loop.rotation.x = Math.PI / 2;
+  const mid = new THREE.Group(); mid.rotation.y = Math.PI / 2; mid.add(pillow, loop);   // long side along the rifle (group +Z = forward)
+  const g = new THREE.Group(); g.add(mid); g.userData.onSide = false; return g;
 }
 
