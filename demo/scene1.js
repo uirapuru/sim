@@ -28,9 +28,10 @@ export async function play(ctx) {
   window.__walker = null; window.__camOverride = true;
   for (const id of ["hud", "info"]) { const e = document.getElementById(id); if (e) e.style.display = "none"; }
 
-  const [manifest, BAL, rifleG, spotG] = await Promise.all([
+  const [manifest, BAL, rifleG, spotG, kesG] = await Promise.all([
     fetch("demo/audio/scene1/manifest.json?v=" + Date.now()).then(r => r.json()), fetch("demo/ballistics_scene1.json?v=" + Date.now()).then(r => r.json()),
-    loader.loadAsync("models/grot.glb?v=" + Date.now()), loader.loadAsync("models/spotter60_stand.glb?v=" + Date.now())]);
+    loader.loadAsync("models/grot.glb?v=" + Date.now()), loader.loadAsync("models/spotter60_stand.glb?v=" + Date.now()),
+    loader.loadAsync("models/kestrel5700.glb?v=" + Date.now())]);
 
   // ---------- range geometry ----------
   const fwd = V(FIRE.x, 0, FIRE.y).normalize(), left = V(fwd.z, 0, -fwd.x), up = V(0, 1, 0);
@@ -166,7 +167,16 @@ export async function play(ctx) {
   notebook.castShadow = true; scene.add(notebook);
   // Kestrel 5700: body, screen, impeller cage on top with a vane wheel that spins in the wind
   // Kestrel 5700 Elite (props.js), impeller cover open; the impeller spins about the axis through the head
-  const kestrel = makeKestrel(THREE), impeller = kestrel.userData.impeller; scene.add(kestrel);
+  // Kestrel 5700 (bought model, impeller cover swung open); the glTF has the display along +x, turned so it faces +z
+  const kestrel = new THREE.Group(), impeller = kesG.scene.getObjectByName("kestrel5700x_fan");
+  kesG.scene.rotation.y = -Math.PI / 2; kestrel.add(kesG.scene); scene.add(kestrel);
+  kesG.scene.traverse(o => { if (o.isMesh) { o.castShadow = true;
+    if (o.material.name === "kestrel5700x_lcd") {                 // the readout on the display
+      const c = document.createElement("canvas"); c.width = 360; c.height = 230; const x = c.getContext("2d");
+      x.fillStyle = "#b9c3a8"; x.fillRect(0, 0, 360, 230); x.fillStyle = "#1b241b"; x.font = "bold 34px monospace";
+      x.fillText("WIND   3.0", 22, 58); x.fillText("DIR   9:00", 22, 118); x.fillText("TEMP   8.0", 22, 178);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.flipY = false;
+      o.material = o.material.clone(); o.material.map = t; o.material.emissiveMap = null; o.material.emissive.set(0x000000); } } });
   const magProp = RP.mag.clone(); scene.add(magProp);
   const rounds = []; for (let i = 0; i < 3; i++) { const r = new THREE.Group(); const cs = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.051, 10), new THREE.MeshStandardMaterial({ color: 0xc8a050, metalness: 0.8, roughness: 0.3 })); const bl = new THREE.Mesh(new THREE.ConeGeometry(0.0039, 0.022, 10), new THREE.MeshStandardMaterial({ color: 0xb06a3a, metalness: 0.8, roughness: 0.3 })); bl.position.y = 0.036; r.add(cs, bl); scene.add(r); rounds.push(r); }
   const caseEject = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.051, 8), new THREE.MeshStandardMaterial({ color: 0xc8a050, metalness: 0.8, roughness: 0.3 })); scene.add(caseEject);
@@ -431,7 +441,7 @@ export async function play(ctx) {
     S.cam = { kind: "world", pos: RL(V(1.9, 0.9, -1.6)), look: RL(V(0.55, 0.55, -0.42)), fov: 38 }; });
   B(18, "s18.rule", (S, u) => { unloaded(S); S.man.R = null; instKneel(S, 1 - ease(seg(u, 0, 0.35)), 0.3 * (1 - ease(seg(u, 0, 0.35))), "shooter");
     S.cam = { kind: "world", pos: W(-3.0, -2.6, 1.3), look: W(-0.5, 0.3, 0.4), fov: 42 }; });
-  B(18, "s18.log", (S, u) => { unloaded(S); writing(S); S.rifle.boltOpen = true; S.rifle.magIn = false; S.cam = { kind: "follow", off: [0.9, 0.7, 0.3], look: [0.25, 0.1, 0.9] };
+  B(18, "s18.log", (S, u) => { unloaded(S); writing(S); S.rifle.boltOpen = true; S.rifle.magIn = false; S.cam = { kind: "follow", off: [-0.85, 0.75, 0.55], look: [-0.1, 0.1, 0.9] };   // from the left: the instructor kneels on the right
     S.ov.note = card("62%", "12%", "330px", reveal([...NB, "Wiatr 3,0 m/s z godz. 9", "625 m · 6,5 ↑ · 1,6 ←", "Strzały: 3 · trafienia: 3", "Skupienie ok. 20 cm, środek celu"], 0.55 + u * 0.45)); });
   cmd(18, "s18.cmd2", S => unloaded(S));
   B(18, "s18.stand", (S, u) => { unloaded(S); const k = ease(seg(u, 0, 0.6)); S.man.R = null; S.man.L = null;
@@ -621,7 +631,7 @@ export async function play(ctx) {
       inst.rig.look(I.look === "port" ? rifle.localToWorld(V(0.02, 0, -0.43)) : man.rig.B.Head.getWorldPosition(V()), 0.7); }
     // props
     notebook.visible = !!S.props.notebook; if (notebook.visible) { notebook.position.copy(rifle.localToWorld(V(-0.29, -0.245, -0.32))); notebook.quaternion.copy(qGround); }
-    kestrel.visible = !!S.props.kestrel; if (kestrel.visible) { kestrel.position.copy(man.rig.B.RightHand.localToWorld(V(0, 0.08, 0.03))); kestrel.quaternion.copy(man.rig.B.RightHand.getWorldQuaternion(new THREE.Quaternion())); impeller.rotation.z = S.props.spin || 0; }
+    kestrel.visible = !!S.props.kestrel; if (kestrel.visible) { kestrel.position.copy(man.rig.B.RightHand.localToWorld(V(0, 0.08, 0.03))); kestrel.quaternion.copy(man.rig.B.RightHand.getWorldQuaternion(new THREE.Quaternion())); impeller.rotation.x = S.props.spin || 0; }
     magProp.visible = !!S.props.mag;
     const MAG_C = V(0, -0.083, -0.46);                               // centre of the magazine in rifle coordinates
     if (S.props.mag === "chest") {                                   // held upright in front of the chest, lips up
