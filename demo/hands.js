@@ -89,3 +89,53 @@ export function makeHands(THREE, soldier, { cutIndex = { R: true, L: false }, gl
   const handPoint = (side, x = 0, y = 0.09, z = 0) => hands[side].g.localToWorld(V(x, y, z));
   return { update, handPoint, hands };
 }
+
+// Bought gloved hands (models/gloves.glb, CGTrader "FPS Glove Tactical 4", olive; the right glove is cut on the index
+// fingertip with bare skin under it). One skinned model per soldier: the DEF-hand bone of each side is taken off its
+// forearm and driven every frame from the soldier's hand bone; the fingers are rotated from script. Same interface as
+// makeHands: update(pose) after the IK, handPoint(side, x, y, z) in the hand bone frame, hands[side].g.visible.
+export function makeGloves(THREE, soldier, gltfScene, { clone } = {}) {
+  const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+  const root = clone ? clone(gltfScene) : gltfScene, scene = soldier.m.parent;
+  scene.add(root); root.updateMatrixWorld(true);
+  root.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = true;
+    if (/anatomy/.test(o.name)) o.material = new THREE.MeshStandardMaterial({ color: 0xc69a7c, roughness: 0.55 }); } });   // bare fingertip
+  const find = n => { let b = null; root.traverse(o => { if (!b && o.name.replace(/[.\s_]/g, "") === n.replace(/[.\s_]/g, "")) b = o; }); return b; };
+  const hands = {};
+  for (const side of ["R", "L"]) {
+    const P = side === "R" ? "Right" : "Left", s = "." + side;
+    const bone = soldier.rig.B[`${P}Hand`], mid = soldier.rig.B[`${P}HandMiddle1`];
+    const wrist = find("DEF-hand" + s), fing = {};
+    for (const f of ["index", "middle", "ring", "pinky"]) fing[f] = [1, 2, 3].map(k => find(`DEF-f_${f}.0${k}${s}`));
+    fing.thumb = [1, 2, 3].map(k => find(`DEF-thumb.0${k}${s}`));
+    // source frame of the bought hand at rest: y along the fingers, z towards the index finger
+    const W = wrist.getWorldPosition(V()), y = fing.middle[0].getWorldPosition(V()).sub(W);
+    const lenSrc = y.length(); y.normalize();
+    const z = fing.index[0].getWorldPosition(V()).sub(fing.pinky[0].getWorldPosition(V())); z.addScaledVector(y, -z.dot(y)).normalize();
+    const x = V().crossVectors(y, z), Rsrc = new THREE.Matrix4().makeBasis(x, y, z);
+    const rest = wrist.matrixWorld.clone().setPosition(0, 0, 0);
+    // the soldier's hand frame, in its own (scaled) bone space: the same y/z meaning (measured for makeHands)
+    soldier.m.updateMatrixWorld(true);
+    const k = bone.getWorldScale(V()).x, lenDst = bone.getWorldPosition(V()).distanceTo(mid.getWorldPosition(V()));
+    const local = new THREE.Matrix4().makeScale(lenDst / lenSrc / k, lenDst / lenSrc / k, lenDst / lenSrc / k).multiply(Rsrc.clone().transpose()).multiply(rest);
+    const g = new THREE.Group(); g.matrixAutoUpdate = false; scene.add(g);
+    g.attach(wrist); wrist.matrixAutoUpdate = true; local.decompose(wrist.position, wrist.quaternion, wrist.scale);
+    const restQ = {}; for (const [f, bs] of Object.entries(fing)) restQ[f] = bs.map(b => b.quaternion.clone());
+    hands[side] = { g, bone, fing, restQ };
+  }
+  Object.defineProperty(hands.R.g, "visible", { get: () => root.visible, set: v => { root.visible = v; hands.L.g.children.forEach(c => c.visible = v); } });
+  const q = new THREE.Quaternion(), AX = V(1, 0, 0);
+  const pose = (h, f, angles) => h.fing[f].forEach((b, i) => b.quaternion.copy(h.restQ[f][i]).multiply(q.setFromAxisAngle(AX, angles[i])));
+  function update(p) {
+    for (const side of ["R", "L"]) {
+      const h = hands[side], s = p[side] || { curl: 0.3 };
+      h.bone.updateMatrixWorld(true); h.g.matrix.copy(h.bone.matrixWorld); h.g.updateMatrixWorld(true);
+      for (const f of ["index", "middle", "ring", "pinky"]) { const c = f === "index" && s.index != null ? s.index : s.curl; pose(h, f, [c * 1.45, c * 1.65, c * 1.1]); }
+      const t = s.thumb ?? s.curl * 0.8; pose(h, "thumb", [t * 0.35, t * 0.6, t * 0.6]);
+      h.g.updateMatrixWorld(true);
+      h.bone.scale.setScalar(0.001); h.bone.updateMatrixWorld(true);   // hide the mitten (restored with the next clean pose)
+    }
+  }
+  const handPoint = (side, x = 0, y = 0.09, z = 0) => hands[side].g.localToWorld(V(x, y, z));
+  return { update, handPoint, hands };
+}

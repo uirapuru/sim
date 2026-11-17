@@ -16,7 +16,7 @@ let running = false;
 export async function play(ctx) {
   // helper modules load with the same version tag as this file, so an edited helper is never served from the cache
   const ver = new URL(import.meta.url).search;
-  const [{ Timeline, makePanel, overlayLayer, sounds }, { makeRig }, { makeSordin, makeKestrel }, { makeHands }] =
+  const [{ Timeline, makePanel, overlayLayer, sounds }, { makeRig }, { makeSordin, makeKestrel }, { makeHands, makeGloves }] =
     await Promise.all(["engine", "rig", "props", "hands"].map(n => import(`./${n}.js${ver}`)));
   if (running) return; running = true;
   const { THREE, scene, camera, hAt, meta, FIRE, gltf, clips, SkeletonUtils, GLTFLoader } = ctx;
@@ -28,10 +28,10 @@ export async function play(ctx) {
   window.__walker = null; window.__camOverride = true;
   for (const id of ["hud", "info"]) { const e = document.getElementById(id); if (e) e.style.display = "none"; }
 
-  const [manifest, BAL, rifleG, spotG, kesG] = await Promise.all([
+  const [manifest, BAL, rifleG, spotG, kesG, gloveG] = await Promise.all([
     fetch("demo/audio/scene1/manifest.json?v=" + Date.now()).then(r => r.json()), fetch("demo/ballistics_scene1.json?v=" + Date.now()).then(r => r.json()),
     loader.loadAsync("models/grot.glb?v=" + Date.now()), loader.loadAsync("models/spotter60_stand.glb?v=" + Date.now()),
-    loader.loadAsync("models/kestrel5700.glb?v=" + Date.now())]);
+    loader.loadAsync("models/kestrel5700.glb?v=" + Date.now()), loader.loadAsync("models/gloves.glb?v=" + Date.now())]);
 
   // ---------- range geometry ----------
   const fwd = V(FIRE.x, 0, FIRE.y).normalize(), left = V(fwd.z, 0, -fwd.x), up = V(0, 1, 0);
@@ -216,7 +216,7 @@ export async function play(ctx) {
   // head width, under the hood (author, 17 XI)
   const earDefenders = sd => { const h = makeSordin(THREE, { earX: 0.082, earY: 0.072, apexY: 0.205 }); sd.rig.B.Head.add(h); return h; };
   earDefenders(man); earDefenders(inst);
-  const handsMan = makeHands(THREE, man), handsInst = makeHands(THREE, inst, { cutIndex: { R: false, L: false } });
+  const handsMan = makeGloves(THREE, man, gloveG.scene, { clone: SkeletonUtils.clone }), handsInst = makeGloves(THREE, inst, gloveG.scene, { clone: SkeletonUtils.clone });
 
   // measure poses once: where the eye (headfront) sits in the prone pose, relative to the root
   const headfront = man.m.getObjectByName("headfront");
@@ -308,7 +308,8 @@ export async function play(ctx) {
     S.cam = { kind: "rifle", pos: [0.42, 0.12, -0.45], look: [0.02, 0, -0.5] }; });
   B(4, "s04.look", (S, u) => { kneelWork(S); S.rifle.boltOpen = true; S.man.R = "grip"; S.man.look = "port"; S.cam = { kind: "rifle", pos: [0.2, 0.06, -0.43], look: [0.0, -0.02, -0.43], fov: 32 }; });
   B(4, "s04.finger", (S, u) => { kneelWork(S); S.rifle.boltOpen = true; S.man.R = "chamber"; S.man.curl.R = 0.45; S.man.look = "port"; S.cam = { kind: "rifle", pos: [0.34, 0.1, -0.33], look: [0.03, 0, -0.44], fov: 30 }; });
-  B(4, "s04.glove", (S, u) => { kneelWork(S); S.rifle.boltOpen = true; S.man.R = "chamber"; S.man.curl.R = 0.45; S.cam = { kind: "hand", dist: 0.62, fov: 34 };
+  B(4, "s04.glove", (S, u) => { kneelWork(S); S.rifle.boltOpen = true; S.man.R = "grip"; S.man.curl.R = 0.45;   // on the grip, index straight along the receiver
+    S.cam = { kind: "hand", dist: 0.42, fov: 34 };
     S.ov.glove = [`<b>Rękawica z uciętym palcem wskazującym</b><br>Goły opuszek na spuście: strzelec czuje moment zwolnienia spustu.`, "left:50%;transform:translateX(-50%);top:14%;background:rgba(0,0,0,.75);color:#fff;padding:10px 16px;border-radius:6px;font:17px system-ui;max-width:520px;text-align:center"]; });
   // 5 caps and turrets
   // each cap: hand to the cap, cap goes with the hand, hand puts it down on the right of the rifle
@@ -510,7 +511,10 @@ export async function play(ctx) {
   const composer = new EffectComposer(ctx.renderer); composer.addPass(new RenderPass(scene, camera));
   const bokeh = new BokehPass(scene, camera, { focus: 3, aperture: 0.004, maxblur: 0.012 }); composer.addPass(bokeh); composer.addPass(new OutputPass());
   addEventListener("resize", () => composer.setSize(innerWidth, innerHeight));
-  window.__renderOverride = () => composer.render();
+  window.__renderOverride = () => {                              // __dbgCam: test hook, a fixed camera for close-up checks
+    const dc = window.__dbgCam; if (dc) { camera.position.copy(dc.p); camera.lookAt(dc.t); camera.fov = dc.fov || 40; camera.updateProjectionMatrix(); }
+    const hide = dc && dc.noBody ? [] : null; if (hide) man.m.traverse(o => { if (o.isSkinnedMesh && o.visible) { o.visible = false; hide.push(o); } });
+    composer.render(); if (hide) hide.forEach(o => o.visible = true); };
   const canvas = ctx.renderer.domElement;
   let scopeOv = null, lastMag = -1;
   const grass = scene.children.find(o => o.isInstancedMesh && o.count > 1000);
@@ -694,8 +698,9 @@ export async function play(ctx) {
       focusPt = rifle.localToWorld(lk); camera.position.copy(rifle.localToWorld(ps)); camera.lookAt(focusPt); }
     else if (c.kind === "world") { focusPt = c.look.clone(); camera.position.copy(c.pos); camera.lookAt(c.look); }
     else if (c.kind === "hand") {                                   // on the right hand, from the rifle's right side and a little above
-      const h = handsMan.handPoint("R", 0, 0.1, 0), rq = rifle.quaternion;
-      const dir = V(1, 0, 0).applyQuaternion(rq).multiplyScalar(0.85).add(V(0, 0.55, 0)).add(V(0, 0, 0.25).applyQuaternion(rq)).normalize();
+      // from the back of the glove and the index-finger side, so the cut fingertip is in view
+      const h = handsMan.handPoint("R", 0, 0.15, 0.02), rq = rifle.quaternion;
+      const dir = V(1, 0, 0).applyQuaternion(rq).add(V(0, 0.18, 0)).add(V(0, 0, 0.12).applyQuaternion(rq)).normalize();
       focusPt = h; camera.position.copy(h).addScaledVector(dir, c.dist || 0.6); camera.lookAt(h); }
     else if (c.kind === "gong") { const toShooter = fp.clone().sub(gongBase).normalize(), side = V(toShooter.z, 0, -toShooter.x);
       camera.position.copy(gongBase).addScaledVector(toShooter, -1.6).addScaledVector(side, 2.2).add(V(0, 1.2, 0)); camera.fov = 50;
@@ -802,7 +807,7 @@ export async function play(ctx) {
 
   (window.__frameHooks = window.__frameHooks || []).push(hook);
   addEventListener("pointerdown", () => snd.unlock(), { once: true });
-  window.__demo = { tl, render, man, inst, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt };
+  window.__demo = { tl, render, man, inst, handsMan, handsInst, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt };
 }
 
 // ---------- rear bag ----------
