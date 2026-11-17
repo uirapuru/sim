@@ -1751,98 +1751,98 @@
   "key": "s05.caps",
   "speaker": "narrator",
   "file": "s05.caps.mp3",
-  "duration": 7.6,
-  "text": "Strzelec zdejmuje zakrywki z obiektywu i z okularu. Chronią szkło w marszu, ale przy strzelaniu muszą być zdjęte.",
+  "duration": 7.84,
+  "text": "Strzelec odchyla zakrywki na obiektywie i na okularze. W marszu chronią szkło, a do strzelania muszą być otwarte.",
   "words": [
    [
     0.0,
-    0.64,
+    0.56,
     "Strzelec"
    ],
    [
-    0.72,
-    1.12,
-    "zdejmuje"
+    0.64,
+    0.96,
+    "odchyla"
    ],
    [
-    1.2,
-    1.68,
+    1.04,
+    1.52,
     "zakrywki"
    ],
    [
-    1.72,
-    1.76,
-    "z"
+    1.56,
+    1.6,
+    "na"
    ],
    [
-    1.84,
+    1.68,
+    2.32,
+    "obiektywie"
+   ],
+   [
     2.4,
-    "obiektywu"
-   ],
-   [
     2.48,
-    2.56,
     "i"
    ],
    [
-    2.6,
+    2.56,
     2.64,
-    "z"
+    "na"
    ],
    [
     2.72,
-    3.52,
-    "okularu."
+    3.56,
+    "okularze."
    ],
    [
-    3.76,
-    4.08,
-    "Chronią"
+    3.84,
+    3.92,
+    "W"
    ],
    [
-    4.16,
+    4.0,
     4.4,
-    "szkło"
+    "marszu"
    ],
    [
-    4.44,
-    4.48,
-    "w"
+    4.52,
+    4.72,
+    "chronią"
    ],
    [
-    4.56,
-    5.12,
-    "marszu,"
+    4.8,
+    5.52,
+    "szkło,"
    ],
    [
-    5.24,
-    5.36,
-    "ale"
-   ],
-   [
-    5.44,
     5.6,
-    "przy"
+    5.68,
+    "a"
    ],
    [
-    5.72,
-    6.24,
-    "strzelaniu"
+    5.76,
+    5.84,
+    "do"
    ],
    [
-    6.4,
-    6.72,
+    5.92,
+    6.48,
+    "strzelania"
+   ],
+   [
+    6.64,
+    6.88,
     "muszą"
    ],
    [
-    6.8,
-    6.92,
+    6.96,
+    7.08,
     "być"
    ],
    [
-    6.96,
-    7.68,
-    "zdjęte."
+    7.12,
+    7.84,
+    "otwarte."
    ]
   ]
  },

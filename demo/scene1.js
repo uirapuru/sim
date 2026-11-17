@@ -143,16 +143,33 @@ export async function play(ctx) {
   const pGround = feet.clone().sub(BIPOD_FOOT.clone().applyQuaternion(qGround));
   const RL = (p, q = qGround, pos = pGround) => p.clone().applyQuaternion(q).add(pos);    // rifle-local -> world (ground pose)
   // scope caps
+  // flip-up scope caps on hinges (author, 18 XI, as in the photos): a collar on each end of the scope and a lid on a
+  // hinge; the objective lid flips up, the eyepiece lid swings to the left side and lies along the scope, clear of the
+  // turrets. State per cap: openness 0 (closed) .. 1 (open); "on"/"pouch" closed, anything else open
   const capMat = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.7 });
-  const capF = new THREE.Mesh(new THREE.CylinderGeometry(0.031, 0.031, 0.014, 24), capMat); scene.add(capF);
-  const capR = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.014, 24), capMat); scene.add(capR);
-  const CAP_ON = { F: V(0, 0.0857, -0.576), R: V(0, 0.0857, -0.228) }, CAP_GROUND = { F: V(0.17, -0.245, -0.36), R: V(0.21, -0.245, -0.27) };
-  const rotX90 = new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), Math.PI / 2);
-  function placeCap(mesh, side, state) {                       // on the scope, in the right hand, on the ground right of the rifle, or in the pouch
-    mesh.visible = state !== "pouch"; if (!mesh.visible) return;
-    if (state === "hand") { const h = man.rig.B.RightHandMiddle1; mesh.position.copy(h.localToWorld(V(0, 0.02, 0.025))); mesh.quaternion.copy(h.getWorldQuaternion(new THREE.Quaternion())); return; }
-    mesh.position.copy(rifle.localToWorld((state === "ground" ? CAP_GROUND : CAP_ON)[side].clone()));
-    mesh.quaternion.copy(rifle.quaternion).multiply(state === "ground" ? new THREE.Quaternion() : rotX90);
+  const CAP_ON = { F: V(0, 0.0857, -0.576), R: V(0, 0.0857, -0.228) };
+  function makeFlipCap(r, side) {
+    const g = new THREE.Group(), lid = new THREE.Group();
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.003, r + 0.003, 0.016, 28, 1, true).rotateX(Math.PI / 2), capMat);
+    collar.material = capMat.clone(); collar.material.side = THREE.DoubleSide; g.add(collar);
+    const hingeAt = side === "F" ? V(0, r + 0.004, 0) : V(-(r + 0.004), 0, 0);            // top of the objective / left of the eyepiece
+    const knuckle = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.012, 8), capMat);
+    if (side === "F") knuckle.rotation.z = Math.PI / 2; knuckle.position.copy(hingeAt); g.add(knuckle);
+    lid.position.copy(hingeAt); g.add(lid);
+    const out = side === "F" ? -1 : 1;                                                        // lid sits outside the end: forward / back
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.0035, r + 0.0035, 0.006, 28).rotateX(Math.PI / 2), capMat);
+    disc.position.copy(hingeAt.clone().negate()).add(V(0, 0, out * 0.011)); lid.add(disc);
+    const tab = new THREE.Mesh(new THREE.BoxGeometry(side === "F" ? 0.012 : 0.006, side === "F" ? 0.006 : 0.012, 0.004), capMat);   // thumb tab opposite the hinge
+    tab.position.copy(hingeAt.clone().negate().multiplyScalar(2)).add(V(0, 0, out * 0.011)); lid.add(tab);
+    g.userData = { lid, side }; scene.add(g); return g;
+  }
+  const capF = makeFlipCap(0.031, "F"), capR = makeFlipCap(0.024, "R");
+  const capOpenOf = st => typeof st === "number" ? st : (st === "on" || st === "pouch" ? 0 : 1);
+  function placeCap(g, side, state) {
+    g.position.copy(rifle.localToWorld(CAP_ON[side].clone())); g.quaternion.copy(rifle.quaternion);
+    const k = ease(Math.max(0, Math.min(1, window.__capTest ?? capOpenOf(state)))), lid = g.userData.lid;   // __capTest: test hook
+    if (side === "F") lid.rotation.set(-k * 1.92, 0, 0);          // up and over, ~110 degrees
+    else lid.rotation.set(0, k * 1.62, 0);                         // to the left and forward, flat along the scope tube
   }
   // rear bag under the butt
   // rear bag: flat sand-filled pillow ~20 x 13 x 6 cm in woodland camouflage, with a carry loop; lies flat under the
@@ -216,7 +233,9 @@ export async function play(ctx) {
       const end = FENCE[FENCE.length - 1]; if (i === FENCE.length - 2) { const post = new THREE.Mesh(postG, postM); post.position.set(end.x, hAt(end.x, end.z) + 1.1, end.z); fence.add(post); }
     }
     // small shelter with a table for the ammunition NCO, on the range side of the fence level with the stand (author, 18 XI)
-    { const sh = new THREE.Group(), at = V(422, 0, 1868), yaw = Math.atan2(FENCE[4].x - FENCE[3].x, FENCE[4].z - FENCE[3].z), wood = new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 0.85 });
+    { const sh = new THREE.Group(), at = (() => { const a = FENCE[2], b = FENCE[3], d = b.clone().sub(a).normalize(), n = V(-d.z, 0, d.x);   // 2 m clear of the fence (author, 18 XI)
+        const p = a.clone().lerp(b, 0.9); if (n.z > 0) n.negate(); return p.addScaledVector(n, 2.0 + 1.35); })(),
+        yaw = Math.atan2(FENCE[3].x - FENCE[2].x, FENCE[3].z - FENCE[2].z) + Math.PI / 2, wood = new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 0.85 });
       const roofM = new THREE.MeshStandardMaterial({ color: 0x55605a, metalness: 0.4, roughness: 0.6, side: THREE.DoubleSide });
       for (const [x, z, h] of [[-1.5, -1.1, 2.5], [1.5, -1.1, 2.5], [-1.5, 1.1, 2.2], [1.5, 1.1, 2.2]]) { const pst = new THREE.Mesh(new THREE.BoxGeometry(0.1, h, 0.1), postM); pst.position.set(x, h / 2, z); sh.add(pst); }
       const roof = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.04, 2.7), roofM); roof.position.set(0, 2.38, 0); roof.rotation.x = Math.atan2(0.3, 2.2); sh.add(roof);
@@ -367,10 +386,10 @@ export async function play(ctx) {
     S.cam = { kind: "hand", dist: 0.42, fov: 34 };
     S.ov.glove = [`<b>Rękawica z uciętym palcem wskazującym</b><br>Goły opuszek na spuście: strzelec czuje moment zwolnienia spustu.`, "left:50%;transform:translateX(-50%);top:14%;background:rgba(0,0,0,.75);color:#fff;padding:10px 16px;border-radius:6px;font:17px system-ui;max-width:520px;text-align:center"]; });
   // 5 caps and turrets
-  // each cap: hand to the cap, cap goes with the hand, hand puts it down on the right of the rifle
-  const capMove = (S, side, u) => { const k = ease(seg(u, 0.25, 0.75));
-    S.man.R = u < 0.25 ? { from: "grip", to: "cap" + side, k: ease(seg(u, 0, 0.25)) } : u < 0.75 ? { from: "cap" + side, to: "capDrop" + side, k } : { from: "capDrop" + side, to: "grip", k: ease(seg(u, 0.75, 1)) };
-    S.rifle["cap" + side] = u < 0.25 ? "on" : u < 0.75 ? "hand" : "ground"; };
+  // each cap: the hand goes to the lid's tab, flips it open on its hinge and goes back to the grip
+  const capMove = (S, side, u) => {
+    S.man.R = u < 0.35 ? { from: "grip", to: "cap" + side, k: ease(seg(u, 0, 0.35)) } : u < 0.65 ? "cap" + side : { from: "cap" + side, to: "grip", k: ease(seg(u, 0.65, 1)) };
+    S.rifle["cap" + side] = seg(u, 0.38, 0.62); };
   B(5, "s05.caps", (S, u) => { kneelWork(S); S.rifle.boltOpen = true;
     if (u < 0.5) capMove(S, "F", u * 2); else { S.rifle.capF = "ground"; capMove(S, "R", (u - 0.5) * 2); }
     S.cam = { kind: "rifle", pos: [0.50, 0.10, -0.55], look: [0.03, 0.06, -0.40], near: true, fov: 42 }; });
@@ -512,7 +531,7 @@ export async function play(ctx) {
   B(18, "s18.stand", (S, u) => { unloaded(S); const k = ease(seg(u, 0, 0.6)); S.man.R = null; S.man.L = null;
     S.man.at = PRONE.clone().lerp(KNEEL, k); S.man.yaw = lerp(yawFwd, KNEEL_YAW, k);
     S.man.clips = k < 1 ? [["Prone_Fire", 0.5, 1 - k], ["Kneel_on_One_Knee_and_Stand", 0, k]] : [["Kneel_on_One_Knee_and_Stand", lerp(0, 2.3, ease(seg(u, 0.6, 1))), 1]];
-    if (u > 0.7) S.rifle.capF = S.rifle.capR = "pouch";              // picked up with the rifle, into the pouch (not narrated)
+    S.rifle.capF = S.rifle.capR = 1 - seg(u, 0.55, 0.7);              // flip-up caps closed before the rifle is picked up (not narrated)
     if (u > 0.75) { S.rifle.mode = "carry"; S.rifle.blend = 1 - ease(seg(u, 0.75, 1)); S.man.R = "grip"; }
     S.cam = { kind: "world", pos: W(-4.5, -3.0, 1.8), look: W(-0.6, 0.2, 0.5), fov: 45 }; }, { dur: 9 });
   const slung = S => { unloaded(S); S.rifle.mode = "sling"; S.rifle.capF = S.rifle.capR = "pouch"; S.man.R = "grip"; S.man.L = null; };
@@ -598,7 +617,7 @@ export async function play(ctx) {
   const HANDS = {   // rifle-local wrist and knuckle targets
     grip: [[0.033, -0.05, -0.255], [-0.022, -0.106, -0.36]], handguard: [[-0.035, -0.07, -0.66], [0.02, -0.05, -0.74]],
     bipod: [[-0.06, -0.12, -0.80], [0.0, -0.2, -0.86]], charging: [[0.075, 0.02, -0.52], [0.045, 0.02, -0.57]],
-    chamber: [[0.10, 0.03, -0.38], [0.025, 0.0, -0.45]], capF: [[0.07, 0.11, -0.53], [0.01, 0.09, -0.585]], capR: [[0.07, 0.10, -0.19], [0.01, 0.086, -0.225]],
+    chamber: [[0.10, 0.03, -0.38], [0.025, 0.0, -0.45]], capF: [[0.07, 0.03, -0.53], [0.01, 0.05, -0.595]], capR: [[0.10, 0.07, -0.17], [0.035, 0.085, -0.245]],   // to the lid tabs
     capDropF: [[0.19, -0.17, -0.31], [0.17, -0.24, -0.37]], capDropR: [[0.23, -0.17, -0.22], [0.21, -0.24, -0.28]],
     elev: [[0.06, 0.17, -0.37], [0.004, 0.14, -0.41]], windage: [[0.10, 0.07, -0.38], [0.045, 0.086, -0.41]], parallax: [[-0.10, 0.07, -0.38], [-0.045, 0.086, -0.41]],
     bag: [[-0.075, -0.17, -0.02], [-0.02, -0.16, -0.09]], magwell: [[0.04, -0.20, -0.46], [0.0, -0.13, -0.49]], boltcatch: [[-0.06, -0.06, -0.38], [-0.02, -0.04, -0.42]],
