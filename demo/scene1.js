@@ -16,7 +16,7 @@ let running = false;
 export async function play(ctx) {
   // helper modules load with the same version tag as this file, so an edited helper is never served from the cache
   const ver = new URL(import.meta.url).search;
-  const [{ Timeline, makePanel, overlayLayer, sounds }, { makeRig }, { makeSordin }, { makeHands }] =
+  const [{ Timeline, makePanel, overlayLayer, sounds }, { makeRig }, { makeSordin, makeKestrel }, { makeHands }] =
     await Promise.all(["engine", "rig", "props", "hands"].map(n => import(`./${n}.js${ver}`)));
   if (running) return; running = true;
   const { THREE, scene, camera, hAt, meta, FIRE, gltf, clips, SkeletonUtils, GLTFLoader } = ctx;
@@ -164,14 +164,8 @@ export async function play(ctx) {
   const notebook = new THREE.Group(); { const cov = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.008, 0.15), propMat(0x2f3b28)); const pg = new THREE.Mesh(new THREE.BoxGeometry(0.104, 0.009, 0.144), propMat(0xf2efe6)); pg.position.y = 0.002; notebook.add(cov, pg); }
   notebook.castShadow = true; scene.add(notebook);
   // Kestrel 5700: body, screen, impeller cage on top with a vane wheel that spins in the wind
-  const kestrel = new THREE.Group(), impeller = new THREE.Group();
-  { const body = new THREE.Mesh(new THREE.BoxGeometry(0.046, 0.125, 0.02), propMat(0xb9a275));
-    const cage = new THREE.Mesh(new THREE.TorusGeometry(0.019, 0.003, 8, 24), propMat(0x222222)); cage.position.y = 0.08;
-    for (let i = 0; i < 6; i++) { const v = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.016, 0.006), propMat(0x2b2b2b)); v.position.y = 0.008; v.rotation.y = i * Math.PI / 3; const a = new THREE.Group(); a.rotation.z = i * Math.PI / 3; a.add(v); impeller.add(a); }
-    impeller.position.y = 0.08;
-    const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.034, 0.03), new THREE.MeshBasicMaterial({ color: 0x9fb39a })); scr.position.set(0, 0.02, 0.0101);
-    kestrel.add(body, cage, impeller, scr); }
-  scene.add(kestrel);
+  // Kestrel 5700 Elite (props.js), impeller cover open; the impeller spins about the axis through the head
+  const kestrel = makeKestrel(THREE), impeller = kestrel.userData.impeller; scene.add(kestrel);
   const magProp = RP.mag.clone(); scene.add(magProp);
   const rounds = []; for (let i = 0; i < 3; i++) { const r = new THREE.Group(); const cs = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.051, 10), new THREE.MeshStandardMaterial({ color: 0xc8a050, metalness: 0.8, roughness: 0.3 })); const bl = new THREE.Mesh(new THREE.ConeGeometry(0.0039, 0.022, 10), new THREE.MeshStandardMaterial({ color: 0xb06a3a, metalness: 0.8, roughness: 0.3 })); bl.position.y = 0.036; r.add(cs, bl); scene.add(r); rounds.push(r); }
   const caseEject = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.051, 8), new THREE.MeshStandardMaterial({ color: 0xc8a050, metalness: 0.8, roughness: 0.3 })); scene.add(caseEject);
@@ -357,7 +351,7 @@ export async function play(ctx) {
   B(10, "s10.kestrel", (S, u, b) => { prone(S); S.props.kestrel = "hand"; S.man.look = "kestrel";
     S.man.R = u < 0.25 ? { from: "grip", to: "kestrelUp", k: ease(seg(u, 0, 0.25)) } : "kestrelUp";
     const t = S.tInBeat - b.dur * 0.25; S.props.spin = t > 0 ? 18 * t * Math.min(1, t / 1.5) : 0;
-    S.cam = { kind: "follow", off: [-1.1, 0.9, 1.6], look: [0.2, 0.55, 0.5] }; });
+    S.cam = u < 0.5 ? { kind: "follow", off: [-1.1, 0.9, 1.6], look: [0.2, 0.55, 0.5] } : { kind: "prop", dist: 0.32 }; });   // close-up: the impeller spinning
   B(10, "s10.reading", (S, u, b) => { prone(S); S.props.kestrel = "hand"; S.man.look = "kestrel";
     S.man.R = u < 0.3 ? { from: "kestrelUp", to: "kestrelRead", k: ease(seg(u, 0, 0.3)) } : "kestrelRead";
     const t = S.tInBeat; S.props.spin = 1000 + 18 * t * Math.max(0, 1 - t / 4);
@@ -402,7 +396,7 @@ export async function play(ctx) {
   // first shot: 0.85 s after the shot the view cuts to the gong and the bullet clock slows down 10x until 0.4 s after the hit
   const SLOW = { from: 0.85, factor: 0.1, until: 1.113 + 0.4 }, SLOW_LEN = (SLOW.until - SLOW.from) / SLOW.factor;
   B(15, "s15.flight", (S, u, b) => { live(S); const t = S.tInBeat - 0.25;
-    if (t < SLOW.from || t > SLOW.from + SLOW_LEN) scopeCam(S, { mag: SHOOT_MAG, breath: 0.05 }); else { S.cam = { kind: "gong" }; S.ov.slow = SLOW_OV; } }, { dur: 0.25 + SLOW.from + SLOW_LEN + 1.6 });
+    if (t < SLOW.from || t > SLOW.from + SLOW_LEN) scopeCam(S, { mag: SHOOT_MAG, breath: 0.05 }); else { S.cam = { kind: "gong" }; S.ov.slow = SLOW_OV; S.ov.arc = arcOverlay(rangeAtTime(bt(SHOTS[0], S.T))); } }, { dur: 0.25 + SLOW.from + SLOW_LEN + 1.6 });
   B(15, "s15.hit", (S, u) => { live(S); scopeCam(S, { mag: SHOOT_MAG, breath: 0.05 }); });
   // replay of the action cycling, 10x slow, seen through the ejection port: carrier back, case out to the right, carrier home
   B(15, "s15.cycle", (S, u) => { live(S); const t = S.tInBeat - 0.6; if (t > 0) S.cycleT = Math.min(0.45, t / 10); if (t > 0 && t < 4.6) S.ov.slow = SLOW_OV;
@@ -424,14 +418,18 @@ export async function play(ctx) {
   // 18 "Do przejrzenia broń!": the instructor checks; "Powstań!"; back to the start line
   cmd(18, "s18.cmd", S => unloaded(S));
   const INSPECT = RL(V(0.55, 0, -0.42)).setY(0), INSPECT_YAW = yawOf(RL(V(0, 0, -0.43)).sub(INSPECT).setY(0));
+  // the instructor walks to the right side of the rifle, kneels, bends over the ejection port and checks it; he says
+  // "Sprawdziłem!" still kneeling and gets up during the next sentence
+  const instKneel = (S, k, lean, look) => { S.inst.at = g(INSPECT.clone()); S.inst.yaw = INSPECT_YAW; S.inst.clips = [["Kneel_on_One_Knee_and_Stand", lerp(1.9, 0, k), 1]]; S.inst.lean = lean; S.inst.look = look; };
   B(18, "s18.inspect", (S, u) => { unloaded(S); S.man.R = null;
-    const k1 = ease(seg(u, 0, 0.3)), k2 = ease(seg(u, 0.3, 0.45)), k3 = ease(seg(u, 0.85, 1));
-    S.inst.at = INST.clone().lerp(g(INSPECT.clone()), k1); S.inst.yaw = k1 < 1 ? yawOf(g(INSPECT.clone()).sub(INST)) : INSPECT_YAW;
-    S.inst.clips = k1 < 1 ? [["Walking", 0, 1]] : [["Kneel_on_One_Knee_and_Stand", lerp(1.9, 0, k2 * (1 - k3)), 1]]; S.inst.walk = k1 * INST.distanceTo(INSPECT); S.inst.lean = 0.7 * k2 * (1 - k3);
-    S.inst.look = u > 0.4 && u < 0.85 ? "port" : "shooter";
-    S.cam = u < 0.35 ? { kind: "world", pos: W(-3.0, -2.6, 1.4), look: W(-0.4, 0.4, 0.5), fov: 40 } : { kind: "world", pos: RL(V(1.1, 0.5, -1.4)), look: RL(V(0.25, 0.05, -0.45)), fov: 40 }; });
-  cmd(18, "s18.checked", S => unloaded(S));
-  B(18, "s18.rule", (S, u) => { unloaded(S); S.man.R = null; S.cam = { kind: "world", pos: W(-3.0, -2.6, 1.3), look: W(-0.5, 0.3, 0.4), fov: 42 }; });
+    const k1 = ease(seg(u, 0, 0.35)), k2 = ease(seg(u, 0.35, 0.5));
+    if (k1 < 1) { S.inst.at = INST.clone().lerp(g(INSPECT.clone()), k1); S.inst.yaw = yawOf(g(INSPECT.clone()).sub(INST)); S.inst.clips = [["Walking", 0, 1]]; S.inst.walk = k1 * INST.distanceTo(INSPECT); }
+    else instKneel(S, k2, 0.75 * k2, u > 0.5 ? "port" : "shooter");
+    S.cam = u < 0.35 ? { kind: "world", pos: W(-3.0, -2.6, 1.4), look: W(-0.4, 0.4, 0.5), fov: 40 } : { kind: "world", pos: RL(V(1.7, 0.8, -2.2)), look: RL(V(0.35, 0.25, -0.45)), fov: 42 }; });
+  B(18, "s18.checked", (S, u) => { unloaded(S); S.man.R = null; instKneel(S, 1, 0.3, "shooter"); S.inst.speak = true;
+    S.cam = { kind: "world", pos: RL(V(1.9, 0.9, -1.6)), look: RL(V(0.55, 0.55, -0.42)), fov: 38 }; });
+  B(18, "s18.rule", (S, u) => { unloaded(S); S.man.R = null; instKneel(S, 1 - ease(seg(u, 0, 0.35)), 0.3 * (1 - ease(seg(u, 0, 0.35))), "shooter");
+    S.cam = { kind: "world", pos: W(-3.0, -2.6, 1.3), look: W(-0.5, 0.3, 0.4), fov: 42 }; });
   B(18, "s18.log", (S, u) => { unloaded(S); writing(S); S.rifle.boltOpen = true; S.rifle.magIn = false; S.cam = { kind: "follow", off: [0.9, 0.7, 0.3], look: [0.25, 0.1, 0.9] };
     S.ov.note = card("62%", "12%", "330px", reveal([...NB, "Wiatr 3,0 m/s z godz. 9", "625 m · 6,5 ↑ · 1,6 ←", "Strzały: 3 · trafienia: 3", "Skupienie ok. 20 cm, środek celu"], 0.55 + u * 0.45)); });
   cmd(18, "s18.cmd2", S => unloaded(S));
@@ -467,6 +465,28 @@ export async function play(ctx) {
     return RL(EYE).addScaledVector(losDir, d).addScaledVector(losUp, h).addScaledVector(losRight, w);
   }
   function rangeAtTime(t) { let i = rows.findIndex(r => r[1] >= t); if (i < 1) i = 1; const a = rows[i - 1], b = rows[i]; return a[0] + (b[0] - a[0]) * (t - a[1]) / Math.max(1e-6, b[1] - a[1]); }
+  // side profile of the trajectory with the dialled elevation: line of sight, bullet path, highest point, hit at 625 m;
+  // the vertical scale is stretched (true proportions would show a flat line)
+  const ARC = (() => { const pts = rows.filter(r => r[0] <= RANGE + 0.1).map(r => [r[0], r[2] + ELEV * r[0] / 1000]); let top = pts[0]; for (const p of pts) if (p[1] > top[1]) top = p; return { pts, top }; })();
+  function arcOverlay(dNow) {
+    const Wd = 520, Hd = 190, x0 = 28, y0 = 120, sx = (Wd - 60) / RANGE, sy = 60;   // px per metre: 0.74 horizontal, 60 vertical (~80x)
+    const X = d => x0 + d * sx, Y = h => y0 - h * sy;
+    const path = ARC.pts.map((p, i) => `${i ? "L" : "M"}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ");
+    const cur = ARC.pts.reduce((a, p) => Math.abs(p[0] - dNow) < Math.abs(a[0] - dNow) ? p : a, ARC.pts[0]);
+    const fmt = v => v.toFixed(2).replace(".", ",");
+    return [`<div style="font:600 14px system-ui;color:#f2c94c;margin-bottom:4px">Tor pocisku z boku · skala pionowa powiększona ok. 80×</div>
+      <svg width="${Wd}" height="${Hd}" style="display:block">
+        <line x1="${X(0)}" y1="${Y(0)}" x2="${X(RANGE)}" y2="${Y(0)}" stroke="#9ec3ff" stroke-width="1.5" stroke-dasharray="6 4"/>
+        <text x="${X(0) + 4}" y="${Y(0) - 6}" fill="#9ec3ff" font-size="12" font-family="system-ui">linia celowania</text>
+        <path d="${path}" fill="none" stroke="#ff8a1e" stroke-width="2.5"/>
+        <circle cx="${X(ARC.top[0])}" cy="${Y(ARC.top[1])}" r="3" fill="#ff8a1e"/>
+        <text x="${X(ARC.top[0]) - 70}" y="${Y(ARC.top[1]) - 8}" fill="#fff" font-size="12" font-family="system-ui">najwyżej ${fmt(ARC.top[1])} m nad linią celowania, na ${Math.round(ARC.top[0])} m</text>
+        <text x="${X(0) + 2}" y="${Y(-0.0857) + 16}" fill="#ccc" font-size="11" font-family="system-ui">wylot lufy 8,6 cm pod linią celowania</text>
+        <rect x="${X(RANGE) - 4}" y="${Y(0.5)}" width="8" height="${sy}" fill="#c0242a"/>
+        <text x="${X(RANGE) - 56}" y="${Y(0) + 46}" fill="#fff" font-size="12" font-family="system-ui">gong, 625 m</text>
+        <circle cx="${X(cur[0])}" cy="${Y(cur[1])}" r="5" fill="#fff" stroke="#ff8a1e" stroke-width="2"/>
+      </svg>`, "left:3%;bottom:150px;background:rgba(0,0,0,.72);padding:10px 14px;border-radius:8px"];
+  }
   const impact = n => { const p = pathAt(RANGE, n), loc = pivot.worldToLocal(p.clone()); return [-loc.x, loc.y - (-0.82)]; };   // plate coords (x right from the shooter's view, y up)
 
   // ---------- render one evaluated state ----------
@@ -593,7 +613,7 @@ export async function play(ctx) {
       inst.rig.look(I.look === "port" ? rifle.localToWorld(V(0.02, 0, -0.43)) : man.rig.B.Head.getWorldPosition(V()), 0.7); }
     // props
     notebook.visible = !!S.props.notebook; if (notebook.visible) { notebook.position.copy(rifle.localToWorld(V(-0.29, -0.245, -0.32))); notebook.quaternion.copy(qGround); }
-    kestrel.visible = !!S.props.kestrel; if (kestrel.visible) { kestrel.position.copy(man.rig.B.RightHand.localToWorld(V(0, 0.08, 0.03))); kestrel.quaternion.copy(man.rig.B.RightHand.getWorldQuaternion(new THREE.Quaternion())); impeller.rotation.y = S.props.spin || 0; }
+    kestrel.visible = !!S.props.kestrel; if (kestrel.visible) { kestrel.position.copy(man.rig.B.RightHand.localToWorld(V(0, 0.08, 0.03))); kestrel.quaternion.copy(man.rig.B.RightHand.getWorldQuaternion(new THREE.Quaternion())); impeller.rotation.z = S.props.spin || 0; }
     magProp.visible = !!S.props.mag;
     const MAG_C = V(0, -0.083, -0.46);                               // centre of the magazine in rifle coordinates
     if (S.props.mag === "chest") {                                   // held upright in front of the chest, lips up
@@ -636,7 +656,7 @@ export async function play(ctx) {
       caseEject.quaternion.copy(rifle.quaternion).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2 + tc * 40, tc * 25, 0)));
     }
     // overlays
-    for (const id of ["glove", "dial", "note", "windLook", "kes", "f", "card", "sel", "slow"]) OV.show(id, S.ov[id] ? S.ov[id][0] : null, S.ov[id] ? S.ov[id][1] : "");
+    for (const id of ["glove", "dial", "note", "windLook", "kes", "f", "card", "sel", "slow", "arc"]) OV.show(id, S.ov[id] ? S.ov[id][0] : null, S.ov[id] ? S.ov[id][1] : "");
     // camera
     if (freeCam) { controls.update(); setScope(null); man.m.visible = rifle.visible = true; camera.fov = 50; camera.updateProjectionMatrix(); setFocus(controls.target); return; }
     const c = S.cam || { kind: "follow", off: [2.5, 1.2, 1.5], look: [0, 0.8, 0] };
@@ -665,6 +685,9 @@ export async function play(ctx) {
     else if (c.kind === "head") {                                    // side of the head: ear defenders
       const who = c.who === "inst" ? inst : man, h = who.rig.B.Head.getWorldPosition(V()).add(V(0, 0.07, 0)), q = who.m.quaternion;
       camera.position.copy(h).add(V(-0.55, 0.06, 0.35).applyQuaternion(q)); camera.fov = 35; camera.lookAt(h); focusPt = h; }
+    else if (c.kind === "prop") {                                    // close-up on the Kestrel, square to its display
+      const kp = kestrel.getWorldPosition(V()).add(V(0, 0.03, 0).applyQuaternion(kestrel.quaternion));
+      camera.position.copy(kp).add(V(0.05, 0.02, 1).normalize().multiplyScalar(c.dist).applyQuaternion(kestrel.quaternion)); camera.fov = 36; camera.lookAt(kp); focusPt = kp; }
     else if (c.kind === "gongClose") { const toShooter = fp.clone().sub(gongBase).normalize(); camera.position.copy(GC).addScaledVector(toShooter, 1.5); camera.fov = 40; camera.lookAt(GC); focusPt = GC.clone(); }
     if (focusPt && c.kind !== "gong") {                              // handheld drift + slow push-in towards the subject
       const d = camera.position.distanceTo(focusPt), uB = S.beat ? Math.min(1, S.tInBeat / S.beat.dur) : 0;
