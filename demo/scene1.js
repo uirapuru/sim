@@ -396,9 +396,9 @@ export async function play(ctx) {
   const capsOff = S => { kneelWork(S); S.rifle.boltOpen = true; S.rifle.capF = S.rifle.capR = "ground"; };
   B(5, "s05.turrets", (S, u) => { capsOff(S); S.man.R = "elev"; S.cam = { kind: "rifle", pos: [0.46, 0.16, -0.50], look: [0, 0.11, -0.41], near: true, fov: 40 }; });
   B(5, "s05.elev", (S, u) => { capsOff(S); S.man.R = "elev"; S.rifle.elev = lerp(0.8, 0, ease(seg(u, 0.35, 0.8)));
-    S.cam = { kind: "rifle", pos: [0.34, 0.30, -0.66], look: [0, 0.13, -0.405], near: true, fov: 38 }; S.ov.dial = turretDialAt("6%", "18%", "Bęben wysokości", S.rifle.elev, 0, 10, "mrad"); });
+    S.cam = { kind: "rifle", pos: [0.06, 0.24, -0.62], look: [0, 0.12, -0.41], near: true, fov: 34 }; S.ov.dial = turretDialAt("6%", "18%", "Bęben wysokości", S.rifle.elev, 0, 10, "mrad"); });
   B(5, "s05.wind", (S, u) => { capsOff(S); S.rifle.elev = 0; S.man.R = "windage"; S.rifle.wind = lerp(0.2, 0, ease(seg(u, 0.3, 0.7)));
-    S.cam = { kind: "rifle", pos: [0.44, 0.12, -0.46], look: [0.03, 0.086, -0.405], near: true, fov: 38 }; S.ov.dial = turretDialAt("6%", "18%", "Bęben poprawek bocznych (P)", S.rifle.wind, 0, 10, "mrad"); });
+    S.cam = { kind: "rifle", pos: [0.16, 0.13, -0.62], look: [0.03, 0.088, -0.41], near: true, fov: 34 }; S.ov.dial = turretDialAt("6%", "18%", "Bęben poprawek bocznych (P)", S.rifle.wind, 0, 10, "mrad"); });
   // 6 prone behind the rifle (still unloaded, action open)
   const ready = S => { onGround(S); S.rifle.boltOpen = true; S.rifle.capF = S.rifle.capR = "ground"; S.rifle.elev = 0; S.rifle.wind = 0; };
   B(6, "s06.prone", (S, u) => { ready(S); const k = ease(u); S.man.at = KNEEL.clone().lerp(PRONE, k); S.man.yaw = lerp(KNEEL_YAW, yawFwd, k);
@@ -616,13 +616,25 @@ export async function play(ctx) {
     const k = S.rifle.blend, pp = p.clone().lerp(pGround, k).add(V(0, Math.sin(Math.PI * Math.min(1, k)) * 0.25, 0));
     return { p: pp, q: q.clone().slerp(qGround, k) };
   }
+  // per hold: rifle-local hand orientation (Euler YXZ) and finger joint angles. The turret holds were fitted numerically
+  // (18 XI): index pad and thumb on opposite sides of the cap, no finger inside the cap or the scope, joints within
+  // their natural range
+  const HAND_ORIENT = { elev: [-0.852, 3.563, -2.952], windage: [-0.946, 2.768, -3.139] };
+  const FINGER_POSE = {
+    elev: { indexA: [0.754, 0.577, 0.323], gripA: [0.874, 1.343, 0.202], thumbA: [0.481, 0.264, 0.453], thumbUp: 0.145 },
+    windage: { indexA: [1.66, 1.042, 0.588], gripA: [0.453, 1.7, 1.497], thumbA: [0.617, 0.483, 0.956], thumbUp: 0.038 } };
+  // the pinching hand turns with the cap, letting go and taking a new hold every ~40 degrees
+  const TURRET_AX = { elev: { p: V(0, 0.121, -0.405), a: V(0, 1, 0), ang: S => S.rifle.elev / 10 * Math.PI * 2 },
+    windage: { p: V(0.031, 0.086, -0.405), a: V(1, 0, 0), ang: S => -S.rifle.wind / 10 * Math.PI * 2 } };
+  const twistOf = (key, S) => { const t = TURRET_AX[key]; if (!t) return 0; const SEG = 0.7, a = t.ang(S), n = a / SEG, f = n - Math.floor(n);
+    return SEG * (f < 0.85 ? f / 0.85 : (1 - f) / 0.15) - SEG / 2; };
   const GRIP_TUNE = { pitch: 0.2, roll: 0 };   // wrist high and hand flat: the index finger reaches the trigger in its own axis
   const HANDS = {   // rifle-local wrist and knuckle targets
     grip: [[0.033, -0.05, -0.255], [-0.022, -0.106, -0.36]], handguard: [[-0.035, -0.07, -0.66], [0.02, -0.05, -0.74]],
     bipod: [[-0.06, -0.12, -0.80], [0.0, -0.2, -0.86]], charging: [[0.075, 0.02, -0.52], [0.045, 0.02, -0.57]],
     chamber: [[0.10, 0.03, -0.38], [0.025, 0.0, -0.45]], capF: [[0.07, 0.03, -0.53], [0.01, 0.05, -0.595]], capR: [[0.10, 0.07, -0.17], [0.035, 0.085, -0.245]],   // to the lid tabs
     capDropF: [[0.19, -0.17, -0.31], [0.17, -0.24, -0.37]], capDropR: [[0.23, -0.17, -0.22], [0.21, -0.24, -0.28]],
-    elev: [[0.06, 0.17, -0.37], [0.004, 0.14, -0.41]], windage: [[0.10, 0.07, -0.38], [0.045, 0.086, -0.41]], parallax: [[-0.10, 0.07, -0.38], [-0.045, 0.086, -0.41]],
+    elev: [[0.101, 0.181, -0.361], [0.004, 0.14, -0.41]], windage: [[0.041, 0.131, -0.334], [0.045, 0.086, -0.41]], parallax: [[-0.10, 0.07, -0.38], [-0.045, 0.086, -0.41]],
     bag: [[-0.075, -0.17, -0.02], [-0.02, -0.16, -0.09]], magwell: [[0.04, -0.20, -0.46], [0.0, -0.13, -0.49]], boltcatch: [[-0.06, -0.06, -0.38], [-0.02, -0.04, -0.42]],
     write: [[-0.20, -0.20, -0.25], [-0.25, -0.235, -0.33]], notebook: [[-0.36, -0.21, -0.30], [-0.30, -0.235, -0.33]],
     kestrel: [[-0.12, 0.06, -0.40], [-0.15, 0.12, -0.45]], kestrelUp: [[-0.22, 0.42, -0.42], [-0.24, 0.52, -0.44]], kestrelRead: [[-0.13, 0.05, -0.30], [-0.12, 0.13, -0.27]], magload: [[-0.12, -0.17, -0.40], [-0.17, -0.18, -0.45]], mag: [[-0.25, -0.18, -0.42], [-0.18, -0.18, -0.45]],
@@ -703,10 +715,18 @@ export async function play(ctx) {
     for (const side of ["R", "L"]) {                          // a key, or {from, to, k}: the hand travels between two holds
       const h = S.man[side]; if (!h) continue;
       if (h.man) { rig.arm(side, man.m.localToWorld(V(...h.man[0])), man.m.localToWorld(V(...h.man[1]))); continue; }
-      const tgt = h === "grip" && window.__gripWrist ? [window.__gripWrist, HANDS.grip[1]] : typeof h === "string" ? HANDS[h] : (() => { const a = HANDS[h.from], b = HANDS[h.to]; return a && b ? [0, 1].map(i => a[i].map((v, j) => v + (b[i][j] - v) * h.k)) : null; })();
+      const tgt = window.__hk && window.__hk.key === h ? [window.__hk.wrist, HANDS[h][1]] : h === "grip" && window.__gripWrist ? [window.__gripWrist, HANDS.grip[1]] : typeof h === "string" ? HANDS[h] : (() => { const a = HANDS[h.from], b = HANDS[h.to]; return a && b ? [0, 1].map(i => a[i].map((v, j) => v + (b[i][j] - v) * h.k)) : null; })();
       if (!tgt) continue;
-      rig.arm(side, rifle.localToWorld(V(...tgt[0])), rifle.localToWorld(V(...tgt[1])));
+      let wr = V(...tgt[0]); const tax = side === "R" && typeof h === "string" ? TURRET_AX[h] : null;
+      if (tax) wr = wr.sub(tax.p).applyAxisAngle(tax.a, twistOf(h, S)).add(tax.p);
+      rig.arm(side, rifle.localToWorld(wr), rifle.localToWorld(V(...tgt[1])));
     }
+    // turrets: the hand's orientation is set in the rifle frame (thumb and index pinch the cap), measured below
+    { const key = typeof S.man.R === "string" ? S.man.R : null, hk = window.__hk && window.__hk.key === key ? window.__hk : null;
+      const eul = hk ? hk.euler : HAND_ORIENT[key];
+      if (eul) { const tax = TURRET_AX[key], tw = tax ? new THREE.Quaternion().setFromAxisAngle(tax.a, twistOf(key, S)) : new THREE.Quaternion();
+        const qh = rifle.getWorldQuaternion(new THREE.Quaternion()).multiply(tw).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...eul, "YXZ")));
+        const hb = rig.B.RightHand, pq = new THREE.Quaternion(); hb.parent.getWorldQuaternion(pq); hb.quaternion.copy(pq.invert().multiply(qh)); hb.updateMatrixWorld(true); } }
     if (S.man.R === "grip") {
       const rq = rifle.getWorldQuaternion(new THREE.Quaternion());
       const GT = window.__gripTune || GRIP_TUNE;                  // hand pitch on the grip (test hook: __gripTune)
@@ -758,7 +778,8 @@ export async function play(ctx) {
       const gripIdx = key === "grip" ? { gripA: [0.9, 1.2, 0.4], ...(S.man.trigger ? { indexA: [0, 1.65, 0.45 + 0.3 * (S.man.press || 0)] } : { indexA: [-0.5, 0, 0], indexUp: -0.35 }) } : {};
       const tk = key === "grip" ? (S.man.thumbK || 0) : 0;            // thumb from the grip to the safety lever (measured on the Grot)
       const thumbPose = tk > 0 ? { thumbA: [0.21 + (-0.3 - 0.21) * tk, 0.36 + (0.8 - 0.36) * tk + 0.15 * (S.rifle.selK ?? 0) * tk, 0.36 + (0.8 - 0.36) * tk], thumbUp: -0.3 * tk } : {};
-      handsMan.update({ R: { curl: key === "chamber" ? 0.75 : hold ?? (h ? S.man.curl.R : 0.25), index, thumb: key === "grip" ? 0.6 : null, ...gripIdx, ...thumbPose },
+      const fp_ = (window.__hk && window.__hk.key === key ? window.__hk.fingers : FINGER_POSE[key]) || {};
+      handsMan.update({ R: { curl: key === "chamber" ? 0.75 : hold ?? (h ? S.man.curl.R : 0.25), index, thumb: key === "grip" ? 0.6 : null, ...gripIdx, ...thumbPose, ...fp_ },
                         L: { curl: S.man.L ? (S.man.L === "bag" ? 0.75 : S.man.L === "handguard" ? 0.6 : 0.55) : 0.25 } });
       handsInst.update({ R: { curl: 0.3 }, L: { curl: 0.3 } }); }
     // shots: tracer, flash, case, gong
