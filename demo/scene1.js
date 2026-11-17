@@ -530,8 +530,9 @@ export async function play(ctx) {
     const k = S.rifle.blend, pp = p.clone().lerp(pGround, k).add(V(0, Math.sin(Math.PI * Math.min(1, k)) * 0.25, 0));
     return { p: pp, q: q.clone().slerp(qGround, k) };
   }
+  const GRIP_TUNE = { pitch: 0.2, roll: 0 };   // wrist high and hand flat: the index finger reaches the trigger in its own axis
   const HANDS = {   // rifle-local wrist and knuckle targets
-    grip: [[0.03, -0.066, -0.228], [-0.022, -0.106, -0.33]], handguard: [[-0.035, -0.07, -0.66], [0.02, -0.05, -0.74]],
+    grip: [[0.04, -0.05, -0.20], [-0.022, -0.106, -0.33]], handguard: [[-0.035, -0.07, -0.66], [0.02, -0.05, -0.74]],
     bipod: [[-0.06, -0.12, -0.80], [0.0, -0.2, -0.86]], charging: [[0.075, 0.02, -0.52], [0.045, 0.02, -0.57]],
     chamber: [[0.10, 0.03, -0.38], [0.025, 0.0, -0.45]], capF: [[0.07, 0.11, -0.53], [0.01, 0.09, -0.585]], capR: [[0.07, 0.10, -0.19], [0.01, 0.086, -0.225]],
     capDropF: [[0.19, -0.17, -0.31], [0.17, -0.24, -0.37]], capDropR: [[0.23, -0.17, -0.22], [0.21, -0.24, -0.28]],
@@ -605,13 +606,15 @@ export async function play(ctx) {
     for (const side of ["R", "L"]) {                          // a key, or {from, to, k}: the hand travels between two holds
       const h = S.man[side]; if (!h) continue;
       if (h.man) { rig.arm(side, man.m.localToWorld(V(...h.man[0])), man.m.localToWorld(V(...h.man[1]))); continue; }
-      const tgt = typeof h === "string" ? HANDS[h] : (() => { const a = HANDS[h.from], b = HANDS[h.to]; return a && b ? [0, 1].map(i => a[i].map((v, j) => v + (b[i][j] - v) * h.k)) : null; })();
+      const tgt = h === "grip" && window.__gripWrist ? [window.__gripWrist, HANDS.grip[1]] : typeof h === "string" ? HANDS[h] : (() => { const a = HANDS[h.from], b = HANDS[h.to]; return a && b ? [0, 1].map(i => a[i].map((v, j) => v + (b[i][j] - v) * h.k)) : null; })();
       if (!tgt) continue;
       rig.arm(side, rifle.localToWorld(V(...tgt[0])), rifle.localToWorld(V(...tgt[1])));
     }
     if (S.man.R === "grip") {
       const rq = rifle.getWorldQuaternion(new THREE.Quaternion());
-      const X = V(1, 0, 0).applyQuaternion(rq), Y = V(0, -0.35, -1).normalize().applyQuaternion(rq), Z = X.clone().cross(Y).normalize(); X.copy(Y.clone().cross(Z));
+      const GT = window.__gripTune || GRIP_TUNE;                  // hand pitch on the grip (test hook: __gripTune)
+      const X = V(1, 0, 0).applyQuaternion(rq), Y = V(0, -GT.pitch, -1).normalize().applyQuaternion(rq), Z = X.clone().cross(Y).normalize(); X.copy(Y.clone().cross(Z));
+      if (GT.roll) { const qr = new THREE.Quaternion().setFromAxisAngle(Y, GT.roll); X.applyQuaternion(qr); Z.applyQuaternion(qr); }
       const qh = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z)), hb = rig.B.RightHand, pq = new THREE.Quaternion();
       hb.parent.getWorldQuaternion(pq); hb.quaternion.copy(pq.invert().multiply(qh)); hb.updateMatrixWorld(true);
     }
@@ -655,7 +658,7 @@ export async function play(ctx) {
       const index = S.man.trigger ? 0.42 : key === "chamber" ? 0.0 : key === "grip" ? 0.06 : key === "write" ? 0.45 : null;   // off the trigger along the receiver unless firing
       // on the grip the index finger is raised: its pad on the trigger when firing, otherwise straight along the receiver
       // above the trigger guard (joint angles measured against the Grot's trigger)
-      const gripIdx = key === "grip" ? (S.man.trigger ? { indexA: [-0.35, 1.2 + 0.15 * (S.man.press || 0), 0.2], indexUp: -0.7 } : { indexA: [-0.36, -0.41, -0.28], indexUp: -0.9 }) : {};
+      const gripIdx = key === "grip" ? (S.man.trigger ? { indexA: [0, 0.2 + 0.25 * (S.man.press || 0), 0.1] } : { indexA: [-0.4, 0, 0], indexUp: -0.3 }) : {};
       handsMan.update({ R: { curl: key === "chamber" ? 0.75 : hold ?? (h ? S.man.curl.R : 0.25), index, thumb: key === "grip" ? 0.6 : null, ...gripIdx },
                         L: { curl: S.man.L ? (S.man.L === "bag" ? 0.75 : S.man.L === "handguard" ? 0.6 : 0.55) : 0.25 } });
       handsInst.update({ R: { curl: 0.3 }, L: { curl: 0.3 } }); }
