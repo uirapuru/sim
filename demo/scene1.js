@@ -146,7 +146,8 @@ export async function play(ctx) {
   const capR = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.014, 24), capMat); scene.add(capR);
   const CAP_ON = { F: V(0, 0.0857, -0.576), R: V(0, 0.0857, -0.228) }, CAP_GROUND = { F: V(0.17, -0.245, -0.36), R: V(0.21, -0.245, -0.27) };
   const rotX90 = new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), Math.PI / 2);
-  function placeCap(mesh, side, state) {                       // on the scope, in the right hand, or on the ground right of the rifle
+  function placeCap(mesh, side, state) {                       // on the scope, in the right hand, on the ground right of the rifle, or in the pouch
+    mesh.visible = state !== "pouch"; if (!mesh.visible) return;
     if (state === "hand") { const h = man.rig.B.RightHandMiddle1; mesh.position.copy(h.localToWorld(V(0, 0.02, 0.025))); mesh.quaternion.copy(h.getWorldQuaternion(new THREE.Quaternion())); return; }
     mesh.position.copy(rifle.localToWorld((state === "ground" ? CAP_GROUND : CAP_ON)[side].clone()));
     mesh.quaternion.copy(rifle.quaternion).multiply(state === "ground" ? new THREE.Quaternion() : rotX90);
@@ -436,9 +437,10 @@ export async function play(ctx) {
   B(18, "s18.stand", (S, u) => { unloaded(S); const k = ease(seg(u, 0, 0.6)); S.man.R = null; S.man.L = null;
     S.man.at = PRONE.clone().lerp(KNEEL, k); S.man.yaw = lerp(yawFwd, KNEEL_YAW, k);
     S.man.clips = k < 1 ? [["Prone_Fire", 0.5, 1 - k], ["Kneel_on_One_Knee_and_Stand", 0, k]] : [["Kneel_on_One_Knee_and_Stand", lerp(0, 2.3, ease(seg(u, 0.6, 1))), 1]];
+    if (u > 0.7) S.rifle.capF = S.rifle.capR = "pouch";              // picked up with the rifle, into the pouch (not narrated)
     if (u > 0.75) { S.rifle.mode = "carry"; S.rifle.blend = 1 - ease(seg(u, 0.75, 1)); S.man.R = "grip"; }
     S.cam = { kind: "world", pos: W(-4.5, -3.0, 1.8), look: W(-0.6, 0.2, 0.5), fov: 45 }; }, { dur: 9 });
-  const slung = S => { unloaded(S); S.rifle.mode = "sling"; S.rifle.capF = S.rifle.capR = "ground"; S.man.R = "grip"; S.man.L = null; };
+  const slung = S => { unloaded(S); S.rifle.mode = "sling"; S.rifle.capF = S.rifle.capR = "pouch"; S.man.R = "grip"; S.man.L = null; };
   cmd(18, "s18.cmd3", S => { slung(S); S.man.at = KNEEL.clone(); S.man.yaw = KNEEL_YAW; S.man.clips = [["Idle", 0, 1]]; });
   B(18, "s18.back", (S, u) => { slung(S); walkTo(S, KNEEL, LINE, ease(u)); S.man.walk = ease(u) * KNEEL.distanceTo(LINE); S.man.clips = [["Walking", 0, 1]];
     S.cam = { kind: "world", pos: W(-4.5, -4.0, 1.9), look: W(-8, 1.5, 0.9), fov: 45 }; }, { dur: 12 });
