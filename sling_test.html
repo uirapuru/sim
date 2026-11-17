@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grot na pasie – stanowisko testowe</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #9aa4ad; font: 14px system-ui, sans-serif; }
+  #hud { position: fixed; left: 12px; top: 12px; background: rgba(0,0,0,.6); color: #fff; padding: 8px 10px; border-radius: 6px; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.170.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="hud">Grot na pasie nośnym, bez terenu. Kamera: 1 bok, 2 przód, 3 zbliżenie, 4 dookoła. <a style="color:#fd0" href="index.html?scene=sling">Na strzelnicy w Kijewie</a></div>
+<script type="module">
+// Light stand for tuning sling_walk.js: flat ground, same soldier, same rifle, same module.
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const q = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true; renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9aa4ad);
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.02, 500);
+const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(4, 8, 5); sun.castShadow = true;
+Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30 }); sun.shadow.mapSize.set(2048, 2048);
+scene.add(sun, sun.target, new THREE.HemisphereLight(0xdde8ff, 0x55503a, 0.8));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x6b6a4c, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+scene.add(new THREE.GridHelper(200, 200, 0x444444, 0x5a5a48));
+
+const gltf = await new GLTFLoader().loadAsync("models/soldier.glb");
+const clips = Object.fromEntries(gltf.animations.map(c => [c.name, c]));
+const mixers = [];
+const ctx = { THREE, scene, camera, renderer, hAt: () => 0, meta: { positions: { firing_point: [0, 0, 0] } }, FIRE: new THREE.Vector2(0, -1), gltf, clips, SkeletonUtils, GLTFLoader, mixers };
+const m = await import("./sling_walk.js?" + Date.now());
+const opts = q.has("opts") ? JSON.parse(q.get("opts")) : {};
+await m.play(ctx, opts);
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.1);
+  for (const mx of mixers) mx.update(dt);
+  for (const h of [...(window.__frameHooks || [])]) h(dt);
+  sun.target.position.copy(window.__sling.man.position); sun.position.copy(window.__sling.man.position).add(new THREE.Vector3(4, 8, 5));
+  renderer.render(scene, camera);
+});
+window.__step = (dt) => { for (const mx of mixers) mx.update(dt); for (const h of [...(window.__frameHooks || [])]) h(dt); renderer.render(scene, camera); };
+addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+</script>
+</body>
+</html>

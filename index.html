@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kijewo – próba terenu</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #9fb6c9; overflow: hidden; font: 14px system-ui, sans-serif; }
+  #hud { position: fixed; left: 12px; top: 12px; background: rgba(0,0,0,.65); color: #fff; padding: 10px 12px; border-radius: 6px; max-width: 380px; }
+  #hud b { color: #ffd34d; }
+  #hud button { margin: 4px 4px 0 0; }
+  #info { position: fixed; right: 12px; bottom: 12px; background: rgba(0,0,0,.65); color: #fff; padding: 6px 10px; border-radius: 6px; font-family: monospace; }
+  #load { position: fixed; inset: 0; display: grid; place-items: center; color: #fff; background: #222; font-size: 18px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="load">Wczytuję teren…</div>
+<div id="hud">
+  <b>Próba terenu: strzelnica Kijewo</b><br>
+  Widok:
+  <button data-view="firing_point">stanowisko (leżąc)</button>
+  <button data-view="stand">trybuna</button>
+  <button data-view="fly">swobodny lot</button><br>
+  Przeciągnij myszą, żeby się rozejrzeć. Kółko myszy przybliża (1–12×).<br>
+  Swobodny lot: W/S/A/D, Q/E w górę i w dół, Shift przyspiesza.<br>
+  Godzina: <input id="hour" type="range" min="0" max="24" step="0.25" value="13" style="width:200px;vertical-align:middle"> <span id="hourv">13:00</span><br>
+  <button id="playScene" style="margin:6px 0">▶ Scena: podejście, obserwacja, strzał</button><br>
+  <button id="playSling" style="margin:0 0 6px">▶ Scena testowa: marsz z Grotem na pasie (klawisze 1–4: kamera)</button><br>
+  <button id="playDemo1" style="margin:0 0 6px">▶ Scena pokazowa 1: strzelanie z SpKW/Z</button><br>
+  Wiatr: <input id="wind" type="range" min="0" max="12" step="0.5" value="4" style="width:120px;vertical-align:middle"> <span id="windv">4 m/s</span>
+</div>
+<div id="info"></div>
+<script type="module">
+import * as THREE from "three";
+import { Sky } from "three/addons/objects/Sky.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
+
+const T = "terrain/";
+const LITE = new URLSearchParams(location.search).has("lite");   // headless checks: less grass, small shadows
+const meta = await (await fetch(T + "meta.json")).json();
+const [GW, GH] = meta.grid, CELL = meta.cell_m, NEAR = meta.near;
+const heights = new Uint16Array(await (await fetch(T + "height_2m.u16")).arrayBuffer());
+const nearH = new Uint16Array(await (await fetch(T + "height_near_1m.u16")).arrayBuffer());
+function sample(arr, w, h, cell, x, z) {
+  const gx = Math.min(Math.max(x / cell - 0.5, 0), w - 1.001), gz = Math.min(Math.max(z / cell - 0.5, 0), h - 1.001);
+  const x0 = Math.floor(gx), z0 = Math.floor(gz), fx = gx - x0, fz = gz - z0, i = z0 * w + x0;
+  return ((arr[i] * (1 - fx) + arr[i + 1] * fx) * (1 - fz) + (arr[i + w] * (1 - fx) + arr[i + w + 1] * fx) * fz) / 100;
+}
+const inNear = (x, z) => x > NEAR.x0 + 1 && x < NEAR.x0 + NEAR.size - 1 && z > NEAR.z0 + 1 && z < NEAR.z0 + NEAR.size - 1;
+const hAt = (x, z) => inNear(x, z) ? sample(nearH, NEAR.grid, NEAR.grid, 1, x - NEAR.x0, z - NEAR.z0) : sample(heights, GW, GH, CELL, x, z);
+
+// The stand's concrete body shows up in the DTM as a mound: flatten it inside the outline + 1.2 m.
+function inPoly(x, z, P) { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, zi] = P[i], [xj, zj] = P[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; }
+for (const b of meta.buildings_osm || []) {
+  if (b.deck - b.ground < 1.5) continue;
+  const cx = b.poly.reduce((a, p) => a + p[0], 0) / b.poly.length, cz = b.poly.reduce((a, p) => a + p[1], 0) / b.poly.length;
+  const P = b.poly.map(([x, z]) => { const dx = x - cx, dz = z - cz, d = Math.hypot(dx, dz); return [x + dx / d * 1.7, z + dz / d * 1.7]; });
+  const g100 = Math.round((b.ground + 0.05) * 100);
+  for (let r = 0; r < NEAR.grid; r++) for (let c = 0; c < NEAR.grid; c++) if (inPoly(NEAR.x0 + c + 0.5, NEAR.z0 + r + 0.5, P)) nearH[r * NEAR.grid + c] = Math.min(nearH[r * NEAR.grid + c], g100);
+  for (let r = 0; r < GH; r++) for (let c = 0; c < GW; c++) if (inPoly((c + 0.5) * CELL, (r + 0.5) * CELL, P)) heights[r * GW + c] = Math.min(heights[r * GW + c], g100);
+}
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+renderer.setPixelRatio(LITE ? 0.3 : Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = !LITE;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.55;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0xb8c8d8, 0.00028);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.05, 20000);
+
+const sky = new Sky(); sky.scale.setScalar(15000); scene.add(sky);
+sky.material.uniforms.turbidity.value = 6; sky.material.uniforms.rayleigh.value = 1.6;
+sky.material.uniforms.mieCoefficient.value = 0.004; sky.material.uniforms.mieDirectionalG.value = 0.8;
+
+const hemi = new THREE.HemisphereLight(0xcfe0ff, 0x5a5236, 1.0);
+const sun = new THREE.DirectionalLight(0xfff1d6, 3.0);
+sun.castShadow = true;
+sun.shadow.mapSize.set(LITE ? 512 : 4096, LITE ? 512 : 4096);
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6;
+Object.assign(sun.shadow.camera, { left: -150, right: 150, top: 150, bottom: -150, near: 1, far: 4000 });
+scene.add(hemi, sun, sun.target);
+
+// ---------- procedural detail textures (canvas) ----------
+function noiseCanvas(size, paint) { const c = document.createElement("canvas"); c.width = c.height = size; paint(c.getContext("2d"), size); return c; }
+let rs = 12345; const rnd = () => (rs = (rs * 16807) % 2147483647) / 2147483647;
+const detailTex = new THREE.CanvasTexture(noiseCanvas(512, (g, s) => {   // grass/soil micro detail, neutral mean ~0.5
+  g.fillStyle = "#808080"; g.fillRect(0, 0, s, s);
+  for (let i = 0; i < 26000; i++) {
+    const x = rnd() * s, y = rnd() * s, l = 2 + rnd() * 7, a = -1.9 + rnd() * 0.8, v = 90 + rnd() * 90;
+    g.strokeStyle = `rgba(${v},${v},${v},0.55)`; g.lineWidth = 0.6 + rnd();
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+  }
+  for (let i = 0; i < 1800; i++) { const v = 60 + rnd() * 140; g.fillStyle = `rgba(${v},${v},${v},0.35)`; g.beginPath(); g.arc(rnd() * s, rnd() * s, 0.5 + rnd() * 2.5, 0, 7); g.fill(); }
+}));
+detailTex.wrapS = detailTex.wrapT = THREE.RepeatWrapping; detailTex.colorSpace = THREE.NoColorSpace;
+detailTex.anisotropy = 8;
+
+function terrainMaterial(map) {
+  const mat = new THREE.MeshLambertMaterial({ map });
+  mat.onBeforeCompile = sh => {
+    sh.uniforms.detail = { value: detailTex };
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vWorld;")
+      .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvWorld = (modelMatrix * vec4(transformed,1.0)).xyz;");
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform sampler2D detail; varying vec3 vWorld;")
+      .replace("#include <map_fragment>", `#include <map_fragment>
+        float dist = length(vWorld - cameraPosition);
+        float d1 = texture2D(detail, vWorld.xz / 1.7).r, d2 = texture2D(detail, vWorld.xz / 9.0).g;
+        float fade = 1.0 - smoothstep(25.0, 260.0, dist);
+        diffuseColor.rgb *= mix(1.0, (d1 * 0.65 + d2 * 0.35) * 2.0, 0.85 * fade);
+        diffuseColor.rgb *= mix(1.0, 0.78 + 0.44 * d2, 0.5);`);
+  };
+  return mat;
+}
+const texLoader = new THREE.TextureLoader();
+async function tex(url) { const t = await texLoader.loadAsync(url); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return t; }
+
+// ---------- terrain: far (2 m) + near (1 m, 0.25 m texture) ----------
+function gridMesh(arr, w, h, cell, x0, z0) {
+  const geo = new THREE.PlaneGeometry((w - 1) * cell, (h - 1) * cell, w - 1, h - 1);
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(x0 + (w - 1) * cell / 2 + cell / 2, 0, z0 + (h - 1) * cell / 2 + cell / 2);
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setY(i, arr[i] / 100);
+  geo.computeVertexNormals();
+  return geo;
+}
+const farMat = terrainMaterial(await tex(T + "orto.jpg"));
+farMat.polygonOffset = true; farMat.polygonOffsetFactor = 6; farMat.polygonOffsetUnits = 6;
+const far = new THREE.Mesh(gridMesh(heights, GW, GH, CELL, 0, 0), farMat);
+far.position.y = -0.25; far.receiveShadow = true;
+const near = new THREE.Mesh(gridMesh(nearH, NEAR.grid, NEAR.grid, 1, NEAR.x0, NEAR.z0), terrainMaterial(await tex(T + "orto_near.jpg")));
+near.receiveShadow = true;
+scene.add(far, near);
+
+// orthophoto pixels for colour sampling (grass)
+const nearImg = await new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = T + "orto_near.jpg"; });
+const oc = document.createElement("canvas"); oc.width = 800; oc.height = 800;
+const og = oc.getContext("2d", { willReadFrequently: true }); og.drawImage(nearImg, 0, 0, 800, 800);
+const opx = og.getImageData(0, 0, 800, 800).data;
+const orthoRGB = (x, z) => { const i = (Math.floor(z - NEAR.z0) * 800 + Math.floor(x - NEAR.x0)) * 4; return [opx[i], opx[i + 1], opx[i + 2]]; };
+
+// ---------- wind ----------
+const windU = { value: 4 }, timeU = { value: 0 };
+const windDir = new THREE.Vector2(0.8, 0.6).normalize();
+
+// ---------- grass: instanced blade clusters around the camera ----------
+const bladeTex = new THREE.CanvasTexture(noiseCanvas(256, (g, s) => {
+  g.fillStyle = "#000"; g.fillRect(0, 0, s, s);
+  for (let i = 0; i < 46; i++) {
+    const x = s * (0.1 + 0.8 * rnd()), h = s * (0.45 + 0.55 * rnd()), lean = (rnd() - 0.5) * s * 0.25, w = 2 + rnd() * 4;
+    g.fillStyle = "#fff";
+    g.beginPath(); g.moveTo(x - w, s); g.quadraticCurveTo(x + lean * 0.3, s - h * 0.6, x + lean, s - h); g.quadraticCurveTo(x + lean * 0.3 + 1, s - h * 0.6, x + w, s); g.fill();
+  }
+}));
+bladeTex.colorSpace = THREE.NoColorSpace;
+const tuft = new THREE.BufferGeometry();
+{ // three crossed quads, 1 x 1, base at y=0
+  const pos = [], uv = [], idx = [];
+  for (let k = 0; k < 3; k++) {
+    const a = k * Math.PI / 3, cx = Math.cos(a) * 0.5, cz = Math.sin(a) * 0.5, b = pos.length / 3;
+    pos.push(-cx, 0, -cz, cx, 0, cz, cx, 1, cz, -cx, 1, -cz); uv.push(0, 0, 1, 0, 1, 1, 0, 1);
+    idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+  }
+  tuft.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); tuft.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); tuft.setIndex(idx);
+  tuft.setAttribute("normal", new THREE.Float32BufferAttribute(new Array(pos.length / 3).fill([0, 1, 0]).flat(), 3));
+}
+const grassMat = new THREE.MeshLambertMaterial({ alphaMap: bladeTex, alphaTest: 0.4, side: THREE.DoubleSide });
+grassMat.onBeforeCompile = sh => {
+  sh.uniforms.wind = windU; sh.uniforms.time = timeU;
+  sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nuniform float wind; uniform float time;")
+    .replace("#include <begin_vertex>", `#include <begin_vertex>
+      vec4 ip = instanceMatrix * vec4(0.0,0.0,0.0,1.0);
+      float sway = (0.04 + 0.03 * wind) * (sin(time * (1.3 + 0.15 * wind) + ip.x * 0.35 + ip.z * 0.21) + 0.6) * position.y * position.y;
+      transformed.x += sway * ${windDir.x.toFixed(3)} * 3.0; transformed.z += sway * ${windDir.y.toFixed(3)} * 3.0;`);
+  sh.fragmentShader = sh.fragmentShader.replace("#include <alphamap_fragment>", "#include <alphamap_fragment>\n diffuseColor.rgb *= 0.65 + 0.5 * vAlphaMapUv.y;")
+    .replace("#include <normal_fragment_begin>", "#include <normal_fragment_begin>\n normal = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);");   // light blades like the ground, both sides
+};
+const GRASS_N = LITE ? 8000 : 140000, GRASS_R = 70;
+const grass = new THREE.InstancedMesh(tuft, grassMat, GRASS_N);
+grass.frustumCulled = false;
+scene.add(grass);
+const grassCenter = new THREE.Vector2(1e9, 1e9);
+function placeGrass(cx, cz) {
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), c = new THREE.Color();
+  let n = 0;
+  for (let i = 0; i < GRASS_N * 3 && n < GRASS_N; i++) {
+    const r = GRASS_R * Math.pow(rnd(), 0.7), a = rnd() * 6.283;
+    const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+    if (!inNear(x, z)) continue;
+    if (Math.hypot(x - meta.positions.firing_point[0], z - meta.positions.firing_point[2]) < 55) continue;   // mown firing point (author, 16 XI)
+    const [R, G, B] = orthoRGB(x, z);
+    const bright = (R + G + B) / 3;
+    if (bright > 150 || (bright > 125 && rnd() < 0.7)) continue;      // roads, sand
+    const h = 0.25 + rnd() * 0.45;
+    q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rnd() * 6.28);
+    m.compose(p.set(x, hAt(x, z) - 0.03, z), q, s.set(0.35 + rnd() * 0.3, h, 0.35 + rnd() * 0.3));
+    grass.setMatrixAt(n, m);
+    c.setRGB(R / 255 * 1.05, G / 255 * 1.1, B / 255 * 0.9, THREE.SRGBColorSpace);
+    grass.setColorAt(n++, c);
+  }
+  grass.count = n; grass.instanceMatrix.needsUpdate = true; if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
+  grassCenter.set(cx, cz);
+}
+
+// ---------- trees: pines from canopy height ----------
+const tr = new Float32Array(await (await fetch(T + "trees.f32")).arrayBuffer());
+const nTrees = tr.length / 4;
+const needleTex = new THREE.CanvasTexture(noiseCanvas(256, (g, s) => {
+  g.fillStyle = "#777"; g.fillRect(0, 0, s, s);
+  for (let i = 0; i < 9000; i++) { const v = 60 + rnd() * 160; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(rnd() * s, rnd() * s, 1 + rnd() * 3, 1 + rnd() * 2); }
+}));
+needleTex.wrapS = needleTex.wrapT = THREE.RepeatWrapping;
+function crownGeometry() {        // irregular blob of a Scots pine crown, height 1, radius ~1
+  const g = new THREE.IcosahedronGeometry(1, 3), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const n = 0.75 + 0.35 * Math.sin(x * 5.1 + y * 3.7) * Math.cos(z * 4.3 - y * 2.9) + 0.15 * Math.sin(x * 13 + z * 11);
+    p.setXYZ(i, x * n, (y * 0.5 + 0.5) * (0.85 + 0.25 * n), z * n);
+  }
+  g.computeVertexNormals(); return g;
+}
+const crowns = new THREE.InstancedMesh(crownGeometry(), new THREE.MeshLambertMaterial({ map: needleTex }), nTrees);
+const trunkGeo = new THREE.CylinderGeometry(0.1, 0.17, 1, 6); trunkGeo.translate(0, 0.5, 0);
+const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x6e5444 }), nTrees);
+{
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), col = new THREE.Color();
+  for (let i = 0; i < nTrees; i++) {
+    const x = tr[i * 4], z = tr[i * 4 + 1], h = tr[i * 4 + 3], g = hAt(x, z);
+    const young = h < 7;
+    const crownH = young ? h * 0.8 : h * (0.32 + 0.14 * rnd()), crownR = young ? h * 0.28 : Math.max(1.2, h * (0.13 + 0.06 * rnd()));
+    q.setFromEuler(new THREE.Euler((rnd() - 0.5) * 0.12, rnd() * 6.28, (rnd() - 0.5) * 0.12));
+    m.compose(p.set(x, g + h - crownH, z), q, s.set(crownR, crownH, crownR * (0.8 + 0.4 * rnd()))); crowns.setMatrixAt(i, m);
+    crowns.setColorAt(i, col.setHSL(0.24 + 0.06 * rnd(), 0.30 + 0.1 * rnd(), 0.24 + 0.08 * rnd(), THREE.SRGBColorSpace));
+    m.compose(p.set(x, g - 0.3, z), q, s.set(0.6 + h / 25, h - crownH * 0.6 + 0.3, 0.6 + h / 25)); trunks.setMatrixAt(i, m);
+  }
+}
+crowns.castShadow = trunks.castShadow = crowns.receiveShadow = true;
+scene.add(crowns, trunks);
+
+// ---------- buildings ----------
+const plaster = new THREE.CanvasTexture(noiseCanvas(256, (g, s) => {
+  g.fillStyle = "#bdb6a8"; g.fillRect(0, 0, s, s);
+  for (let i = 0; i < 6000; i++) { const v = 150 + rnd() * 70; g.fillStyle = `rgba(${v},${v - 5},${v - 15},0.4)`; g.fillRect(rnd() * s, rnd() * s, 2, 2); }
+  g.fillStyle = "#4a4d50"; for (let k = 0; k < 4; k++) g.fillRect(20 + k * 60, 90, 34, 44);        // windows
+}));
+plaster.wrapS = plaster.wrapT = THREE.RepeatWrapping; plaster.colorSpace = THREE.SRGBColorSpace;
+const wall = new THREE.MeshLambertMaterial({ map: plaster }), roof = new THREE.MeshLambertMaterial({ color: 0x5d5a55 });
+const camoTex = new THREE.CanvasTexture(noiseCanvas(512, (g, s) => {       // painted camouflage seen on the stand (photos 2025-06-06)
+  g.fillStyle = "#d9cfaa"; g.fillRect(0, 0, s, s);
+  for (const [colr, n, r] of [["#3d7a45", 26, 70], ["#6e4b2f", 16, 55], ["#2c3a2a", 10, 40]]) {
+    g.fillStyle = colr;
+    for (let i = 0; i < n; i++) {
+      const cx = rnd() * s, cy = rnd() * s; g.beginPath();
+      for (let k = 0; k <= 10; k++) { const a = k / 10 * 6.283, rr = r * (0.5 + rnd()); g.lineTo(cx + Math.cos(a) * rr * 1.4, cy + Math.sin(a) * rr * 0.8); }
+      g.fill();
+    }
+  }
+}));
+camoTex.wrapS = camoTex.wrapT = THREE.RepeatWrapping; camoTex.colorSpace = THREE.SRGBColorSpace;
+const camo = new THREE.MeshLambertMaterial({ map: camoTex });
+const white = new THREE.MeshLambertMaterial({ color: 0xe9e6de }), steelDark = new THREE.MeshLambertMaterial({ color: 0x3b3e42 });
+const concrete = new THREE.MeshLambertMaterial({ color: 0xa9a59c }), glass = new THREE.MeshLambertMaterial({ color: 0x5a6f7c });
+const FIRE = new THREE.Vector2(Math.sin(55 * Math.PI / 180), -Math.cos(55 * Math.PI / 180));   // firing direction in x/z
+
+function frame(b) {     // centre, long-axis angle, length, depth, and which way faces the range
+  const P = b.poly, n = P.length;
+  let best = 0, ang = 0;
+  for (let k = 0; k < n; k++) { const [x1, z1] = P[k], [x2, z2] = P[(k + 1) % n], L = Math.hypot(x2 - x1, z2 - z1); if (L > best) { best = L; ang = Math.atan2(z2 - z1, x2 - x1); } }
+  const cx = P.reduce((a, p) => a + p[0], 0) / n, cz = P.reduce((a, p) => a + p[1], 0) / n;
+  const ax = new THREE.Vector2(Math.cos(ang), Math.sin(ang)), nrm = new THREE.Vector2(-ax.y, ax.x);
+  let depth = 0; for (const [x, z] of P) depth = Math.max(depth, Math.abs((x - cx) * nrm.x + (z - cz) * nrm.y) * 2);
+  if (nrm.dot(FIRE) < 0) nrm.negate();
+  return { cx, cz, len: best, depth, yaw: -Math.atan2(nrm.y, nrm.x) + Math.PI / 2, ground: b.ground };
+}
+function boxAt(grp, w, h, d, x, y, z, mat) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; grp.add(m); return m; }
+function railing(grp, len, z, y) {
+  boxAt(grp, len, 0.05, 0.05, 0, y + 1.0, z, steelDark);
+  boxAt(grp, len, 0.04, 0.04, 0, y + 0.5, z, steelDark);
+  for (let x = -len / 2; x <= len / 2 + 0.01; x += 1.2) boxAt(grp, 0.05, 1.0, 0.05, x, y + 0.5, z, steelDark);
+}
+// local frame: x along the building, +z towards the range, y up
+// ---- stand textures modelled on the photos (2025-06-06, 2026-02-01) ----
+const TILE = 6;      // metres per camo texture repeat
+const standCamoTex = new THREE.CanvasTexture(noiseCanvas(1024, (g, s) => {
+  g.fillStyle = "#d3c48e"; g.fillRect(0, 0, s, s);                       // cream render
+  for (let i = 0; i < 9000; i++) { const v = rnd() * 40 - 20; g.fillStyle = `rgba(${200 + v},${185 + v},${135 + v},0.5)`; g.fillRect(rnd() * s, rnd() * s, 2, 2); }
+  const blob = (col, n, r) => { g.fillStyle = col; for (let i = 0; i < n; i++) {
+    const cx = rnd() * s, cy = rnd() * s, k = 7 + Math.floor(rnd() * 5); g.beginPath();
+    for (let j = 0; j < k; j++) { const a = j / k * 6.283 + rnd() * 0.5, rr = r * (0.45 + rnd() * 0.9); g.lineTo(cx + Math.cos(a) * rr * 1.3, cy + Math.sin(a) * rr); }
+    g.closePath(); g.fill();
+  } };
+  blob("#2f8a3a", 15, 95); blob("#6a2e2c", 11, 70); blob("#3d4a2a", 8, 55); blob("#2f8a3a", 6, 50);
+}));
+standCamoTex.wrapS = standCamoTex.wrapT = THREE.RepeatWrapping; standCamoTex.colorSpace = THREE.SRGBColorSpace;
+const flagTex = new THREE.CanvasTexture(noiseCanvas(512, (g, s) => {      // grey-brown concrete flagstones, 4 m tile
+  g.fillStyle = "#3f3a36"; g.fillRect(0, 0, s, s);
+  const row = s / 10;
+  for (let y = 0; y < s; y += row) {
+    let x = -rnd() * row;
+    while (x < s) { const w = row * (1.2 + rnd() * 1.1), v = 95 + rnd() * 30, wr = rnd() * 10;
+      g.fillStyle = `rgb(${v + wr},${v - 3},${v - 8})`; g.fillRect(x + 2, y + 2, w - 4, row - 4);
+      for (let i = 0; i < 40; i++) { const q = rnd() * 30 - 15; g.fillStyle = `rgba(${v + q},${v + q - 4},${v + q - 9},0.6)`; g.fillRect(x + 2 + rnd() * (w - 6), y + 2 + rnd() * (row - 6), 3, 3); }
+      x += w; }
+  }
+}));
+flagTex.wrapS = flagTex.wrapT = THREE.RepeatWrapping; flagTex.colorSpace = THREE.SRGBColorSpace;
+const winTex = new THREE.CanvasTexture(noiseCanvas(256, (g, s) => {       // one 1.2 m window bay: white frames
+  const grd = g.createLinearGradient(0, 0, 0, s); grd.addColorStop(0, "#b8c8d2"); grd.addColorStop(1, "#6b7c86");
+  g.fillStyle = grd; g.fillRect(0, 0, s, s);
+  g.fillStyle = "#eeeeea"; g.fillRect(0, 0, s, 14); g.fillRect(0, s - 14, s, 14); g.fillRect(0, 0, 14, s); g.fillRect(s - 14, 0, 14, s);
+  g.fillRect(s / 2 - 6, 0, 12, s); g.fillRect(0, s * 0.42, s, 10);
+}));
+winTex.wrapS = winTex.wrapT = THREE.RepeatWrapping; winTex.colorSpace = THREE.SRGBColorSpace;
+const corrTex = new THREE.CanvasTexture(noiseCanvas(128, (g, s) => { for (let x = 0; x < s; x += 8) { g.fillStyle = x % 16 ? "#5d6670" : "#7b858f"; g.fillRect(x, 0, 8, s); } }));
+corrTex.wrapS = corrTex.wrapT = THREE.RepeatWrapping; corrTex.colorSpace = THREE.SRGBColorSpace;
+const M = {
+  camo: new THREE.MeshLambertMaterial({ map: standCamoTex }),
+  floor: new THREE.MeshLambertMaterial({ map: flagTex }),
+  white: new THREE.MeshLambertMaterial({ color: 0xf0efe9 }),
+  black: new THREE.MeshLambertMaterial({ color: 0x1d1d1d }),
+  window: new THREE.MeshLambertMaterial({ map: winTex }),
+  ceiling: new THREE.MeshLambertMaterial({ color: 0xe8e8e4 }),
+  roofTop: new THREE.MeshLambertMaterial({ color: 0x4a4f55 }),
+  corr: new THREE.MeshLambertMaterial({ map: corrTex }),
+  post: new THREE.MeshLambertMaterial({ color: 0x55595e }),
+  table: new THREE.MeshLambertMaterial({ color: 0x2e3033 }),
+};
+// box with UVs in metres (texture tile = `tile` m); mats order: [+x,-x,+y,-y,+z (range side),-z]
+function mbox(grp, w, h, d, x, y, z, mats, tile = TILE) {
+  const geo = new THREE.BoxGeometry(w, h, d), uv = geo.attributes.uv;
+  const dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+  for (let f = 0; f < 6; f++) for (let k = 0; k < 4; k++) { const i = f * 4 + k; uv.setXY(i, uv.getX(i) * dims[f][0] / tile, uv.getY(i) * dims[f][1] / tile); }
+  const m = new THREE.Mesh(geo, mats); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; grp.add(m); return m;
+}
+function buildStand(f, b) {   // raised covered firing stand (OSM outline + DTM mound = deck + DSM roof)
+  const g = new THREE.Group(), L = f.len, D = f.depth;
+  const FL = Math.max(3.5, b.deck - b.ground), RF = Math.max(FL + 2.4, b.roof - b.ground);
+  const C = M.camo, W = M.white;
+  mbox(g, L, FL + 1.5, D, 0, (FL + 1.5) / 2 - 1.5, 0, C);                                // painted concrete base
+  mbox(g, L, 0.12, D + 0.6, 0, FL + 0.06, 0.3, [C, C, M.floor, C, C, C], 4);            // deck, flagstones
+  mbox(g, L, 1.0, 0.22, 0, FL + 0.62, D / 2 + 0.49, [W, W, W, W, C, W]);                 // parapet: camo out, white in
+  mbox(g, L, 0.15, 0.02, 0, FL + 0.19, D / 2 + 0.37, M.black);                          // black skirting
+  for (let x = -L / 2 + 1.2; x < L / 2 - 0.8; x += 2.6) {                               // tables on brackets
+    mbox(g, 1.6, 0.04, 0.6, x, FL + 0.95, D / 2 + 0.05, M.table);
+    for (const dx of [-0.65, 0.65]) mbox(g, 0.04, 0.35, 0.04, x + dx, FL + 0.78, D / 2 + 0.2, M.table);
+  }
+  const RW = L * 0.6;                                                                     // rear wall + window band
+  mbox(g, RW, 1.0, 0.2, 0, FL + 0.62, -D / 2 + 0.1, [W, W, W, W, W, C]);
+  mbox(g, RW, RF - FL - 1.12, 0.06, 0, FL + 1.12 + (RF - FL - 1.12) / 2, -D / 2 + 0.1, [W, W, W, W, M.window, M.window], 1.2);
+  for (const sd of [-1, 1]) {
+    const rl = new THREE.Group(); railing(rl, (L - RW) / 2, 0, 0); rl.position.set(sd * (RW / 2 + (L - RW) / 4), FL + 0.12, -D / 2 + 0.1); g.add(rl);
+    const sl = new THREE.Group(); railing(sl, D, 0, 0); sl.rotation.y = Math.PI / 2; sl.position.set(sd * (L / 2 - 0.05), FL + 0.12, 0.2); g.add(sl);
+  }
+  const postGeo = new THREE.CylinderGeometry(0.07, 0.07, RF - FL, 10), n = Math.max(2, Math.round(L / 3.4));
+  for (let i = 0; i <= n; i++) for (const z of [D / 2 + 0.55, -D / 2 + 0.1]) {
+    const p = new THREE.Mesh(postGeo, M.post); p.position.set(-L / 2 + 0.15 + i * (L - 0.3) / n, (FL + RF) / 2, z); p.castShadow = true; g.add(p);
+  }
+  mbox(g, L + 1.4, 0.14, D + 2.0, 0, RF + 0.07, 0.35, [M.roofTop, M.roofTop, M.roofTop, M.ceiling, M.roofTop, M.roofTop]);
+  mbox(g, L * 0.45, 0.6, D * 0.7, L * 0.08, RF + 0.44, -0.2, [M.corr, M.corr, M.roofTop, M.ceiling, M.corr, M.corr], 2);
+  return g;
+}
+function buildTower(f) {     // two-storey control building, balcony to the range, flag mast
+  const g = new THREE.Group(), L = f.len, D = f.depth, H = 6.2;
+  mbox(g, L, H + 1.5, D, 0, (H + 1.5) / 2 - 1.5, 0, M.camo);
+  boxAt(g, L + 0.4, 0.25, D + 0.4, 0, H + 0.12, 0, roof);
+  for (let x = -L / 2 + 1.5; x < L / 2 - 1; x += 2.4) { boxAt(g, 1.2, 1.2, 0.08, x, 1.6, D / 2 + 0.01, glass); boxAt(g, 1.2, 1.2, 0.08, x, 4.4, D / 2 + 0.01, glass); }
+  boxAt(g, 4.5, 0.2, 1.6, L / 2 - 2.6, 3.1, D / 2 + 0.8, concrete);                   // balcony
+  const bal = new THREE.Group(); railing(bal, 4.5, 0, 0); bal.position.set(L / 2 - 2.6, 3.2, D / 2 + 1.55); g.add(bal);
+  boxAt(g, 0.08, 8, 0.08, L / 2 - 0.8, 3.2 + 4, D / 2 + 1.4, steelDark);              // mast
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.0, 8, 1), new THREE.MeshLambertMaterial({ color: 0xc8202a, side: THREE.DoubleSide }));
+  flag.position.set(L / 2 - 0.8 + 0.8, 10.6, D / 2 + 1.4); g.add(flag); flags.push(flag);
+  return g;
+}
+const flags = [];
+const standIdx = (meta.buildings_osm || []).reduce((bi, b, i, arr) => { const d = (bb) => { const f = frame(bb); return Math.hypot(f.cx - meta.positions.stand[0], f.cz - meta.positions.stand[2]); }; return d(b) < d(arr[bi]) ? i : bi; }, 0);
+const towerIdx = (meta.buildings_osm || []).reduce((bi, b, i, arr) => (b.height > arr[bi].height ? i : bi), 0);
+for (const [i, b] of (meta.buildings_osm || []).entries()) {
+  if (i !== standIdx && i !== towerIdx) continue;
+  const f = frame(b), grp = i === standIdx ? buildStand(f, b) : buildTower(f);
+  grp.position.set(f.cx, f.ground, f.cz); grp.rotation.y = f.yaw; scene.add(grp);
+  if (i === standIdx) meta.standDeck = { x: f.cx, z: f.cz, d: f.depth, y: Math.max(f.ground + 3.5, b.deck) + 0.12 };
+}
+// firing line: white posts with red tops every 5 m, lamp posts every 40 m (photos 2022-04-01, 2026-02-01)
+{
+  const fpv = meta.positions.firing_point, side = new THREE.Vector2(-FIRE.y, FIRE.x);
+  const red = new THREE.MeshLambertMaterial({ color: 0xc2272d });
+  for (let k = -10; k <= 10; k++) {
+    const x = fpv[0] + side.x * k * 5 + FIRE.x * 2.5, z = fpv[2] + side.y * k * 5 + FIRE.y * 2.5, y = hAt(x, z);
+    boxAt(scene, 0.14, 0.7, 0.14, x, y + 0.35, z, white); boxAt(scene, 0.15, 0.15, 0.15, x, y + 0.72, z, red);
+  }
+  for (let k = -2; k <= 2; k++) {
+    const x = fpv[0] + side.x * k * 40 - FIRE.x * 6, z = fpv[2] + side.y * k * 40 - FIRE.y * 6, y = hAt(x, z);
+    boxAt(scene, 0.16, 9, 0.16, x, y + 4.5, z, steelDark); boxAt(scene, 0.9, 0.12, 0.3, x + FIRE.x * 0.4, y + 9, z + FIRE.y * 0.4, steelDark);
+  }
+}
+for (const [i, b] of (meta.buildings_osm || []).entries()) {
+  if (i === standIdx || i === towerIdx) continue;
+  const shape = new THREE.Shape(b.poly.map(([x, z]) => new THREE.Vector2(x, -z)));
+  const g = new THREE.ExtrudeGeometry(shape, { depth: b.height + 1.5, bevelEnabled: false });
+  g.rotateX(-Math.PI / 2);
+  const uv = g.attributes.uv, pp = g.attributes.position;        // wall UVs: 8 m x 4 m tile
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (pp.getX(i) + pp.getZ(i)) / 8, pp.getY(i) / 4);
+  const mesh = new THREE.Mesh(g, [roof, wall]);
+  mesh.position.y = b.ground - 1.5;
+  mesh.castShadow = mesh.receiveShadow = true;
+  scene.add(mesh);
+}
+
+// ---------- distance markers on the lane (NE ~55°) ----------
+const fp = meta.positions.firing_point, AZ = 55 * Math.PI / 180;
+const steel = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.7, metalness: 0.1 });
+for (let d = 100; d <= 1000; d += 100) {
+  const x = fp[0] + Math.sin(AZ) * d, z = fp[2] - Math.cos(AZ) * d;
+  const t = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.0, 0.02), steel);
+  t.position.set(x, hAt(x, z) + 0.5, z); t.rotation.y = -AZ; t.castShadow = true; t.userData.distanceMarker = true; scene.add(t);
+}
+
+// ---------- animated soldier (Meshy: multi-view model, A-pose, Mixamo rig, library + text-to-motion clips) ----------
+const mixers = [];
+{
+  const gltf = await new GLTFLoader().loadAsync("models/soldier.glb");
+  const clips = Object.fromEntries(gltf.animations.map(c => [c.name, c]));
+  gltf.scene.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; o.frustumCulled = false; } });
+  const fpv = meta.positions.firing_point, side = new THREE.Vector2(-FIRE.y, FIRE.x);
+  const faceRange = Math.atan2(FIRE.x, FIRE.y);
+  const spawn = (x, z, y, face, clip) => {
+    const c = SkeletonUtils.clone(gltf.scene); c.position.set(x, y, z); c.rotation.y = face; scene.add(c);
+    const m = new THREE.AnimationMixer(c); mixers.push(m);
+    const act = m.clipAction(clips[clip] || gltf.animations[0]); act.play();
+    return { obj: c, mixer: m, act };
+  };
+  const at = (k, back) => { const x = fpv[0] + side.x * k - FIRE.x * back, z = fpv[2] + side.y * k - FIRE.y * back; return [x, z, hAt(x, z)]; };
+  let p;
+  p = at(3, 1.0);  const main = spawn(p[0], p[1], p[2], faceRange, "Idle");
+  p = at(-5, 0.5); spawn(p[0], p[1], p[2], faceRange, "Prone_Fire");
+  p = at(-10, 0.5); spawn(p[0], p[1], p[2], faceRange, "Kneel_Fire");
+  p = at(-15, 0.5); spawn(p[0], p[1], p[2], faceRange, "Barricade_Fire");
+  p = at(-25, -3);  spawn(p[0], p[1], p[2], faceRange, "Low_Crawl");
+  p = at(8, 6);    spawn(p[0], p[1], p[2], faceRange + Math.PI / 2, "Torch_Look_Around");
+  if (meta.standDeck) spawn(meta.standDeck.x, meta.standDeck.z, meta.standDeck.y, faceRange, "Idle");
+  // walker patrolling behind the firing line
+  p = at(-20, 8);  const walker = spawn(p[0], p[1], p[2], 0, "Casual_Walk");
+  walker.path = { a: at(-20, 8), b: at(20, 8), t: 0 };
+  window.__walker = walker; window.__main = main; window.__clips = clips;
+  window.__ctx = { THREE, scene, camera, renderer, hAt, meta, FIRE, gltf, clips, SkeletonUtils, GLTFLoader, mixers };
+  // clip picker for the soldier next to the firing point
+  const sel = document.createElement("select");
+  for (const c of gltf.animations) sel.add(new Option(c.name.replace(/_/g, " "), c.name));
+  sel.value = "Idle";
+  sel.onchange = () => { const next = main.mixer.clipAction(clips[sel.value]); next.reset().play(); main.act.crossFadeTo(next, 0.4, false); main.act = next; };
+  const lab = document.createElement("div"); lab.append("Żołnierz przy stanowisku: ", sel); document.getElementById("hud").append(lab);
+}
+
+// ---------- time of day (simplified sun path for mid-November, 52.9° N) ----------
+const sunDir = new THREE.Vector3();
+function setHour(h) {
+  const decl = -18.5 * Math.PI / 180, lat = 52.9 * Math.PI / 180, ha = (h - 11.8) * 15 * Math.PI / 180;
+  const alt = Math.asin(Math.sin(lat) * Math.sin(decl) + Math.cos(lat) * Math.cos(decl) * Math.cos(ha));
+  const az = Math.atan2(Math.sin(ha), Math.cos(ha) * Math.sin(lat) - Math.tan(decl) * Math.cos(lat)) + Math.PI;
+  sunDir.set(Math.sin(az) * Math.cos(alt), Math.sin(alt), -Math.cos(az) * Math.cos(alt));
+  sky.material.uniforms.sunPosition.value.copy(sunDir);
+  const day = THREE.MathUtils.smoothstep(alt, -0.12, 0.15);
+  const low = 1 - THREE.MathUtils.smoothstep(alt, 0.02, 0.35);
+  sun.intensity = alt > 0 ? 3.2 * day : 0.25;                  // night: moonlight
+  sun.color.setRGB(1, 0.92 - 0.3 * low, 0.82 - 0.45 * low);
+  if (alt <= 0) sun.color.set(0x7d93c7);
+  hemi.intensity = 0.04 + 1.0 * day;
+  hemi.color.setRGB(0.8 * day + 0.15, 0.87 * day + 0.17, 1.0 * day + 0.3);
+  renderer.toneMappingExposure = 0.55 + 1.2 * (1 - day);
+  scene.fog.color.setRGB(0.72 * day + 0.03, 0.78 * day + 0.04, 0.85 * day + 0.08);
+  sky.visible = alt > -0.2;
+  scene.background = sky.visible ? null : new THREE.Color(0x05070d);
+  document.getElementById("hourv").textContent = `${String(Math.floor(h)).padStart(2, "0")}:${String(Math.round(h % 1 * 60)).padStart(2, "0")}`;
+}
+document.getElementById("hour").oninput = e => setHour(+e.target.value);
+document.getElementById("wind").oninput = e => { windU.value = +e.target.value; document.getElementById("windv").textContent = `${e.target.value} m/s`; };
+setHour(13);
+
+// ---------- controls ----------
+let mode = "firing_point", yaw = -AZ, pitch = 0, zoom = 1;
+const keys = {};
+addEventListener("keydown", e => keys[e.code] = true);
+addEventListener("keyup", e => keys[e.code] = false);
+let drag = null;
+renderer.domElement.addEventListener("pointerdown", e => { drag = [e.clientX, e.clientY]; renderer.domElement.setPointerCapture(e.pointerId); });
+renderer.domElement.addEventListener("pointerup", () => drag = null);
+renderer.domElement.addEventListener("pointermove", e => {
+  if (!drag) return;
+  const k = 0.0035 / zoom;
+  yaw -= (e.clientX - drag[0]) * k; pitch = Math.max(-1.4, Math.min(1.4, pitch - (e.clientY - drag[1]) * k));
+  drag = [e.clientX, e.clientY];
+});
+renderer.domElement.addEventListener("wheel", e => {
+  zoom = Math.max(1, Math.min(12, zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+  camera.fov = 60 / zoom; camera.updateProjectionMatrix();
+}, { passive: true });
+function setView(v) {
+  mode = v;
+  if (v === "fly") { camera.position.set(fp[0] - 120, fp[1] + 60, fp[2] + 120); pitch = -0.3; return; }
+  const [x, , z] = meta.positions[v];
+  if (v === "stand" && meta.standDeck) camera.position.set(meta.standDeck.x + FIRE.x * (meta.standDeck.d / 2 - 0.9), meta.standDeck.y + 1.3, meta.standDeck.z + FIRE.y * (meta.standDeck.d / 2 - 0.9));
+  else camera.position.set(x, hAt(x, z) + 0.35, z);
+  yaw = -AZ; pitch = v === "stand" ? -0.02 : 0;
+}
+document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
+window.__sim = { camera, look: (x, y, z, tx, ty, tz) => { mode = "fly"; camera.position.set(x, y, z); const d = new THREE.Vector3(tx - x, ty - y, tz - z).normalize(); yaw = Math.atan2(-d.x, -d.z); pitch = Math.asin(d.y); }, meta, setView, setHour, snap: () => { if (!window.__camOverride) camera.rotation.set(pitch, yaw, 0, "YXZ"); placeGrass(camera.position.x, camera.position.z); if (window.__renderOverride) window.__renderOverride(); else renderer.render(scene, camera); return renderer.domElement.toDataURL("image/jpeg", 0.85); }, stop: () => renderer.setAnimationLoop(null) };
+setView("firing_point");
+document.getElementById("load").remove();
+document.getElementById("playScene").onclick = async () => { const m = await import("./sequence.js?" + Date.now()); m.play(window.__ctx).catch(e => { console.error("scene error", e); window.__seqErr = String(e.stack || e); }); };
+const playSling = async (opts = {}) => { const m = await import("./sling_walk.js?" + Date.now()); return m.play(window.__ctx, opts).catch(e => { console.error("sling scene error", e); window.__seqErr = String(e.stack || e); }); };
+document.getElementById("playSling").onclick = () => playSling();
+window.__playSling = playSling;
+if (new URLSearchParams(location.search).get("scene") === "sling") playSling();
+const playDemo1 = async () => { const m = await import("./demo/scene1.js?" + Date.now()); return m.play(window.__ctx).catch(e => { console.error("demo scene error", e); window.__seqErr = String(e.stack || e); }); };
+document.getElementById("playDemo1").onclick = () => playDemo1();
+if (new URLSearchParams(location.search).get("scene") === "demo1") playDemo1();
+
+const info = document.getElementById("info"), clock = new THREE.Clock(), cam2 = new THREE.Vector2();
+renderer.setAnimationLoop(() => {
+  const rawDt = clock.getDelta(), dt = Math.min(rawDt, 0.1), sdt = Math.min(rawDt, 1.0);   // sdt: real time for the scripted scene
+  timeU.value += dt;
+  for (const m of mixers) m.update(window.__camOverride ? sdt : dt);
+  if (window.__walker) {                      // walk back and forth between two points at ~1.4 m/s
+    const w = window.__walker, A = w.path.a, B = w.path.b, L = Math.hypot(B[0] - A[0], B[1] - A[1]);
+    w.path.t = (w.path.t + dt * 1.4 / L) % 2; const f = w.path.t < 1 ? w.path.t : 2 - w.path.t;
+    const x = A[0] + (B[0] - A[0]) * f, z = A[1] + (B[1] - A[1]) * f;
+    w.obj.position.set(x, hAt(x, z), z);
+    w.obj.rotation.y = Math.atan2((B[0] - A[0]) * (w.path.t < 1 ? 1 : -1), (B[1] - A[1]) * (w.path.t < 1 ? 1 : -1));
+  }
+  for (const fl of flags) { const pa = fl.geometry.attributes.position; for (let i = 0; i < pa.count; i++) { const x = pa.getX(i) + 0.8; pa.setZ(i, Math.sin(timeU.value * (2 + windU.value * 0.4) - x * 3) * 0.08 * x * (0.3 + windU.value / 8)); } pa.needsUpdate = true; }
+  for (const h of [...(window.__frameHooks || [])]) h(sdt);
+  if (!window.__camOverride) camera.rotation.set(pitch, yaw, 0, "YXZ");
+  if (mode === "fly" && !window.__camOverride) {
+    const v = (keys.ShiftLeft ? 120 : 25) * dt, f = new THREE.Vector3(), r = new THREE.Vector3();
+    camera.getWorldDirection(f); r.crossVectors(f, camera.up).normalize();
+    if (keys.KeyW) camera.position.addScaledVector(f, v);
+    if (keys.KeyS) camera.position.addScaledVector(f, -v);
+    if (keys.KeyD) camera.position.addScaledVector(r, v);
+    if (keys.KeyA) camera.position.addScaledVector(r, -v);
+    if (keys.KeyE) camera.position.y += v;
+    if (keys.KeyQ) camera.position.y -= v;
+    camera.position.y = Math.max(camera.position.y, hAt(camera.position.x, camera.position.z) + 0.3);
+  }
+  if (grassCenter.distanceTo(cam2.set(camera.position.x, camera.position.z)) > 25) placeGrass(camera.position.x, camera.position.z);
+  sun.target.position.copy(camera.position);
+  sun.position.copy(camera.position).addScaledVector(sunDir.y > 0 ? sunDir : new THREE.Vector3(0.3, 0.6, 0.4), 1500);
+  info.textContent = `kierunek ${(((-yaw * 180 / Math.PI) % 360 + 360) % 360).toFixed(0)}°  powiększenie ${zoom.toFixed(1)}×`;
+  if (window.__renderOverride) window.__renderOverride(); else renderer.render(scene, camera);
+});
+addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+</script>
+</body>
+</html>
