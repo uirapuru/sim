@@ -581,6 +581,16 @@ export async function play(ctx) {
       // 0) hips and legs on the ground: the whole body down until the hips are ~12 cm above the ground (body thickness)
       const hp = rig.B.Hips.getWorldPosition(V()), hipUp = hp.y - hAt(hp.x, hp.z) - 0.12;
       man.m.position.y -= hipUp; man.m.updateMatrixWorld(true);
+      // 0b) legs flat on the ground (KBW prone board: legs straight in a V, knees and feet on the ground): thighs and
+      // shins turned about the hip and knee so the knee and the foot lie on the surface
+      const aimTo = (bone, child, target) => { const bp = bone.getWorldPosition(V()), from = child.getWorldPosition(V()).sub(bp).normalize(), to = target.clone().sub(bp).normalize();
+        const q = new THREE.Quaternion().setFromUnitVectors(from, to), pq = new THREE.Quaternion(); bone.getWorldQuaternion(pq); const nw = q.multiply(pq);
+        bone.parent.getWorldQuaternion(pq); bone.quaternion.copy(pq.invert().multiply(nw)); bone.updateMatrixWorld(true); };
+      const onGround = (o, lift) => { const p = o.getWorldPosition(V()); p.y = hAt(p.x, p.z) + lift; return p; };
+      for (const P of ["Left", "Right"]) {
+        const up_ = rig.B[P + "UpLeg"] || man.m.getObjectByName("mixamorig" + P + "UpLeg"), knee = man.m.getObjectByName("mixamorig" + P + "Leg"), foot = man.m.getObjectByName("mixamorig" + P + "Foot");
+        if (!up_ || !knee || !foot) continue;
+        aimTo(up_, knee, onGround(knee, 0.075)); aimTo(knee, foot, onGround(foot, 0.085)); }
       // 1) chest about the hips until the shoulders average the pad height (down, or up if the body came too low)
       const avg = (Y("RightArm") + Y("LeftArm")) / 2, down = Math.max(-0.5, Math.min(0.6, Math.asin(Math.max(-1, Math.min(1, (avg - pocket.y - 0.03) / 0.55)))));
       rig.bend(down);
@@ -596,6 +606,7 @@ export async function play(ctx) {
     // nothing under the ground: when blended poses (kneel -> prone) push a body part below the surface, lift the soldier
     { let low = Infinity;
       for (const [n, clear] of [["Hips", 0.1], ["Spine1", 0.1], ["Spine2", 0.1], ["Head", 0.12], ["LeftLeg", 0.06], ["RightLeg", 0.06], ["LeftFoot", 0.05], ["RightFoot", 0.05], ["LeftToe_End", 0.0], ["RightToe_End", 0.0], ["LeftForeArm", 0.05], ["RightForeArm", 0.05]]) {
+        if (prone_ && /ForeArm/.test(n)) continue;              // prone: the forearms are set later by the hands on the rifle
         const b = man.m.getObjectByName("mixamorig:" + n) || man.m.getObjectByName("mixamorig" + n); if (!b) continue;
         const p = b.getWorldPosition(V()); low = Math.min(low, p.y - hAt(p.x, p.z) - clear); }
       if (low < 0) { man.m.position.y -= low; man.m.updateMatrixWorld(true); } }
