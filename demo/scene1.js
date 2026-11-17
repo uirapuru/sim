@@ -122,6 +122,18 @@ export async function play(ctx) {
 
   // ---------- rifle ----------
   const rifle = rifleG.scene; scene.add(rifle);
+  // suppressor on the muzzle brake (KBW boards photo, author 18 XI): a darker ribbed QD mount over the brake and a
+  // coyote-brown can, about 4 + 17 cm, 44 mm across; rifle-local, the bore along -Z
+  { const sup = new THREE.Group(); sup.name = "suppressor";
+    const canM = new THREE.MeshStandardMaterial({ color: 0xa8763f, roughness: 0.55, metalness: 0.25 }), mountM = new THREE.MeshStandardMaterial({ color: 0x7c5c38, roughness: 0.45, metalness: 0.5 });
+    const cyl = (r0, r1, z0, z1, m, seg = 40) => { const c = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, Math.abs(z1 - z0), seg).rotateX(Math.PI / 2), m); c.position.z = (z0 + z1) / 2; c.castShadow = true; sup.add(c); return c; };
+    cyl(0.0185, 0.0195, -1.004, -1.048, mountM);                                         // mount body
+    for (let i = 0; i < 6; i++) { const z = -1.010 - i * 0.0062, rib = new THREE.Mesh(new THREE.TorusGeometry(0.0196, 0.0016, 6, 32), mountM); rib.position.z = z; sup.add(rib); }
+    cyl(0.020, 0.022, -1.048, -1.054, mountM);                                           // collar
+    cyl(0.022, 0.022, -1.054, -1.212, canM);                                             // can
+    cyl(0.022, 0.0195, -1.212, -1.222, canM);                                            // chamfered front cap
+    const bore = new THREE.Mesh(new THREE.CircleGeometry(0.005, 16), new THREE.MeshBasicMaterial({ color: 0x050505 })); bore.position.z = -1.2225; bore.rotation.y = Math.PI; sup.add(bore);
+    rifle.add(sup); }
   rifle.traverse(o => { if (o.isMesh) o.castShadow = o.receiveShadow = true; });
   // black anodizing and polymer read as pure black in close-ups: lift them a little (still black, details visible)
   const lifted = new Set();
@@ -135,7 +147,7 @@ export async function play(ctx) {
   const chRest = RP.ch.position.clone(), boltRest = RP.bolt.position.clone(), selRest = RP.sel.quaternion.clone();
   const KN = { elev: node("scope_elevation"), wind: node("scope_windage"), plx: node("scope_parallax") };
   const knRest = Object.fromEntries(Object.entries(KN).map(([k, o]) => [k, o ? o.quaternion.clone() : null]));
-  const EYE = V(0, 0.0857, -0.1414), MUZZLE = V(0, 0, -1.076), BIPOD_FOOT = V(0, -0.2513, -0.873);
+  const EYE = V(0, 0.0857, -0.1414), MUZZLE = V(0, 0, -1.223) /* front of the suppressor */, BIPOD_FOOT = V(0, -0.2513, -0.873);
   // on the ground: bipod feet at the firing point, line of sight on the gong centre
   const feet = W(0, 0);
   const aim = GC.clone().sub(feet.clone().add(V(0, 0.33, 0))).normalize();
@@ -793,7 +805,7 @@ export async function play(ctx) {
         const mid = a.clone().add(b).multiplyScalar(0.5), len = a.distanceTo(b), r = Math.max(0.004, camera.position.distanceTo(mid) * Math.tan(camFov(S) * Math.PI / 360) * (S.cam && S.cam.kind === "scope" ? 0.0028 : 0.012));
         tracer.visible = true; tracer.position.copy(a).add(b).multiplyScalar(0.5); tracer.scale.set(r, len, r);
         tracer.quaternion.setFromUnitVectors(V(0, 1, 0), b.clone().sub(a).normalize()); }
-      if (t < 0.09) { flash.visible = true; flash.position.copy(rifle.localToWorld(MUZZLE.clone())); flash.scale.setScalar(1 + t * 25); flash.material.opacity = 0.9 - t * 9; flashLight.position.copy(flash.position); flashLight.intensity = 30 * (1 - t / 0.09); }
+      if (t < 0.09) { flash.visible = true; flash.position.copy(rifle.localToWorld(MUZZLE.clone())); flash.scale.setScalar((1 + t * 25) * 0.3); flash.material.opacity = 0.6 - t * 6; /* suppressed: small, dim flash */ flashLight.position.copy(flash.position); flashLight.intensity = 30 * (1 - t / 0.09); }
       if (t >= TOF) { hits.push(impact(sh.n)); const tau = t - TOF; swing += 0.32 * Math.exp(-1.1 * tau) * Math.sin(6.5 * tau); }
     }
     drawMarks(hits); pivot.rotation.x = swing;
