@@ -473,7 +473,10 @@ export async function play(ctx) {
   const dialled = S => { prone(S); S.rifle.elev = ELEV; S.rifle.wind = WIND; S.rifle.parallax = 600; };
   // 14 "Ognia!": safety off
   cmd(14, "s14.cmd", S => dialled(S));
-  B(14, "s14.safety", (S, u) => { dialled(S); S.rifle.safety = u > 0.4 ? "P" : "Z"; S.cam = { kind: "rifle", pos: [-0.22, -0.05, -0.36], look: [0.0, -0.04, -0.34], fov: 30 }; S.ov.sel = SAFE_OV(S); });
+  // the safety is worked by the right thumb (author, 18 XI): thumb to the lever, lever turned, thumb back on the grip
+  const thumbSafety = (S, u, from, to) => { S.man.thumbK = ease(seg(u, 0.08, 0.32)) * (1 - ease(seg(u, 0.62, 0.86)));
+    const k = ease(seg(u, 0.36, 0.56)); S.rifle.selK = from === "Z" ? k : 1 - k; S.rifle.safety = k > 0.5 ? to : from; };
+  B(14, "s14.safety", (S, u) => { dialled(S); thumbSafety(S, u, "Z", "P"); S.cam = { kind: "rifle", pos: [-0.26, 0.0, -0.30], look: [0.0, -0.05, -0.34], fov: 36 }; S.ov.sel = SAFE_OV(S); });
   // 15 first shot
   const live = S => { dialled(S); S.rifle.safety = "P"; };
   const SHOOT_MAG = 9;                                              // measure at 12x, shoot at a lower power (wider view, steadier picture)
@@ -495,7 +498,7 @@ export async function play(ctx) {
   // 17 "Przerwij ogień!", "Rozładuj!"
   const empty = S => { dialled(S); S.rifle.boltOpen = true; S.rifle.safety = "Z"; };
   cmd(17, "s17.cmd", S => { empty(S); S.rifle.safety = "P"; });
-  B(17, "s17.safe", (S, u) => { empty(S); S.rifle.safety = u > 0.35 ? "Z" : "P"; S.cam = { kind: "rifle", pos: [-0.22, -0.05, -0.36], look: [0.0, -0.04, -0.34], fov: 30 }; S.ov.sel = SAFE_OV(S); });
+  B(17, "s17.safe", (S, u) => { empty(S); thumbSafety(S, u, "P", "Z"); S.cam = { kind: "rifle", pos: [-0.26, 0.0, -0.30], look: [0.0, -0.05, -0.34], fov: 36 }; S.ov.sel = SAFE_OV(S); });
   cmd(17, "s17.cmd2", S => empty(S));
   B(17, "s17.unload", (S, u) => { empty(S); S.rifle.magIn = u < 0.4; S.props.mag = u >= 0.4 ? "inspect" : null; S.props.roundsInMag = 0; S.man.R = u < 0.4 ? "magwell" : "maginspect"; S.man.look = u < 0.4 ? "port" : "mag";
     S.cam = { kind: "follow", off: [1.1, 0.6, 0.4], look: [0, 0.25, 0.9] }; });
@@ -544,7 +547,7 @@ export async function play(ctx) {
   const SHOT_BEATS = beats.filter(b => /s15\.flight|s16\.repeat/.test(b.say));
 
   const tl = new Timeline({ beats, manifest, audioDir: "demo/audio/scene1", audioQuery: "?v=" + Date.now(), init, sceneTitles: SCENES });
-  tl.beforeBeat = S => { S.ov = {}; S.cam = null; S.scope = null; S.man.look = null; S.man.trigger = false; S.man.curl = { R: 0.8, L: 0.3 }; S.props.kestrel = null; S.props.notebook = null; S.cycleT = null; S.man.lean = 0; S.inst.lean = 0; };   // hand-held props and the slow replay belong to their beat
+  tl.beforeBeat = S => { S.ov = {}; S.cam = null; S.scope = null; S.man.look = null; S.man.trigger = false; S.man.thumbK = 0; S.rifle.selK = undefined; S.man.curl = { R: 0.8, L: 0.3 }; S.props.kestrel = null; S.props.notebook = null; S.cycleT = null; S.man.lean = 0; S.inst.lean = 0; };   // hand-held props and the slow replay belong to their beat
   // absolute shot times (needed by beats after the shots: marks, swing, bolt)
   const SHOTS = [{ n: 0, t0: SHOT_BEATS[0].start + 0.25, slow: SLOW }, { n: 1, t0: SHOT_BEATS[1].start + 3.0 }, { n: 2, t0: SHOT_BEATS[1].start + 10.5 }];
   const TOF = BAL.tof, SOUND_BACK = RANGE / SOUND;
@@ -645,7 +648,7 @@ export async function play(ctx) {
     RP.bolt.position.copy(boltRest).add(V(0, 0, 0.09 * Math.max(boltBack, back)));   // locked back: bolt face at the rear edge of the port RP.dust.visible = !S.rifle.boltOpen && !SHOTS.some(s => T >= s.t0);
     S.caseT = cyc;
     RP.mag.visible = S.rifle.magIn;
-    RP.sel.quaternion.copy(selRest).multiply(new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), S.rifle.safety === "P" ? -0.9 : 0));
+    RP.sel.quaternion.copy(selRest).multiply(new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), -0.9 * (S.rifle.selK ?? (S.rifle.safety === "P" ? 1 : 0))));
     // soldier
     let clipsList = S.man.clips;
     if (clipsList.length === 1 && clipsList[0][0] === "Walking") clipsList = [["Walking", (S.man.walk / 1.35) % 1.0, 1]];
@@ -753,7 +756,9 @@ export async function play(ctx) {
       // on the grip the index finger is raised: its pad on the trigger when firing, otherwise straight along the receiver
       // above the trigger guard; middle, ring and little finger wrap the front of the grip (angles measured on the Grot)
       const gripIdx = key === "grip" ? { gripA: [0.9, 1.2, 0.4], ...(S.man.trigger ? { indexA: [0, 1.65, 0.45 + 0.3 * (S.man.press || 0)] } : { indexA: [-0.5, 0, 0], indexUp: -0.35 }) } : {};
-      handsMan.update({ R: { curl: key === "chamber" ? 0.75 : hold ?? (h ? S.man.curl.R : 0.25), index, thumb: key === "grip" ? 0.6 : null, ...gripIdx },
+      const tk = key === "grip" ? (S.man.thumbK || 0) : 0;            // thumb from the grip to the safety lever (measured on the Grot)
+      const thumbPose = tk > 0 ? { thumbA: [0.21 + (-0.3 - 0.21) * tk, 0.36 + (0.8 - 0.36) * tk + 0.15 * (S.rifle.selK ?? 0) * tk, 0.36 + (0.8 - 0.36) * tk], thumbUp: -0.3 * tk } : {};
+      handsMan.update({ R: { curl: key === "chamber" ? 0.75 : hold ?? (h ? S.man.curl.R : 0.25), index, thumb: key === "grip" ? 0.6 : null, ...gripIdx, ...thumbPose },
                         L: { curl: S.man.L ? (S.man.L === "bag" ? 0.75 : S.man.L === "handguard" ? 0.6 : 0.55) : 0.25 } });
       handsInst.update({ R: { curl: 0.3 }, L: { curl: 0.3 } }); }
     // shots: tracer, flash, case, gong

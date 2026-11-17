@@ -136,7 +136,8 @@ export function makeGloves(THREE, soldier, gltfScene, { clone } = {}) {
       if (s.gripA) for (const f of ["middle", "ring", "pinky"]) pose(h, f, s.gripA);   // explicit joint angles: wrapped around a grip
       if (s.indexA) pose(h, "index", s.indexA);                    // explicit index joint angles (trigger finger)
       if (s.indexUp) h.fing.index[0].quaternion.copy(h.restQ.index[0]).multiply(q.setFromAxisAngle(AXZ, s.indexUp)).multiply(q2.setFromAxisAngle(AX, s.indexA ? s.indexA[0] : (s.index ?? s.curl) * 1.45));   // index spread sideways
-      const t = s.thumb ?? s.curl * 0.8; pose(h, "thumb", [t * 0.35, t * 0.6, t * 0.6]);
+      const t = s.thumb ?? s.curl * 0.8; pose(h, "thumb", s.thumbA || [t * 0.35, t * 0.6, t * 0.6]);
+      if (s.thumbUp) h.fing.thumb[0].quaternion.multiply(q.setFromAxisAngle(AXZ, s.thumbUp));          // thumb swung across (to a lever)
       h.g.updateMatrixWorld(true);
       h.bone.scale.setScalar(0.001); h.bone.updateMatrixWorld(true);   // hide the mitten (restored with the next clean pose)
     }
