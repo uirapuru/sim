@@ -116,7 +116,8 @@ export function makeGloves(THREE, soldier, gltfScene, { clone } = {}) {
     const rest = wrist.matrixWorld.clone().setPosition(0, 0, 0);
     // the soldier's hand frame, in its own (scaled) bone space: the same y/z meaning (measured for makeHands)
     soldier.m.updateMatrixWorld(true);
-    const k = bone.getWorldScale(V()).x, lenDst = bone.getWorldPosition(V()).distanceTo(mid.getWorldPosition(V()));
+    const k = bone.getWorldScale(V()).x, lenDst = mid ? bone.getWorldPosition(V()).distanceTo(mid.getWorldPosition(V()))
+      : bone.getWorldPosition(V()).distanceTo(bone.parent.getWorldPosition(V())) * 0.42;   // a rig without finger bones: wrist to knuckles ~0.42 forearm
     const local = new THREE.Matrix4().makeScale(lenDst / lenSrc / k, lenDst / lenSrc / k, lenDst / lenSrc / k).multiply(Rsrc.clone().transpose()).multiply(rest);
     const g = new THREE.Group(); g.matrixAutoUpdate = false; scene.add(g);
     g.attach(wrist); wrist.matrixAutoUpdate = true; local.decompose(wrist.position, wrist.quaternion, wrist.scale);

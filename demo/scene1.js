@@ -28,10 +28,11 @@ export async function play(ctx) {
   window.__walker = null; window.__camOverride = true;
   for (const id of ["hud", "info"]) { const e = document.getElementById(id); if (e) e.style.display = "none"; }
 
-  const [manifest, BAL, rifleG, spotG, kesG, gloveG] = await Promise.all([
+  const [manifest, BAL, rifleG, spotG, kesG, gloveG, instG] = await Promise.all([
     fetch("demo/audio/scene1/manifest.json?v=" + Date.now()).then(r => r.json()), fetch("demo/ballistics_scene1.json?v=" + Date.now()).then(r => r.json()),
     loader.loadAsync("models/grot.glb?v=" + Date.now()), loader.loadAsync("models/spotter60_stand.glb?v=" + Date.now()),
-    loader.loadAsync("models/kestrel5700.glb?v=" + Date.now()), loader.loadAsync("models/gloves.glb?v=" + Date.now())]);
+    loader.loadAsync("models/kestrel5700.glb?v=" + Date.now()), loader.loadAsync("models/gloves.glb?v=" + Date.now()),
+    loader.loadAsync("models/instructor.glb?v=" + Date.now())]);
 
   // ---------- range geometry ----------
   const fwd = V(FIRE.x, 0, FIRE.y).normalize(), left = V(fwd.z, 0, -fwd.x), up = V(0, 1, 0);
@@ -191,11 +192,63 @@ export async function play(ctx) {
   const spotter = spotG.scene; spotter.traverse(o => { if (o.isMesh) o.castShadow = true; });
   const spotPos = W(-0.35, 1.7); spotter.position.copy(spotPos); spotter.rotation.y = yawOf(fwd) + Math.PI; scene.add(spotter);
 
+  // ---------- fence: the buildings are separated from the range by a ~2 m wire-mesh fence on a low concrete base
+  // (author, 18 XI); line traced on the orthophoto, world x/z ----------
+  { const FENCE = [[388, 1855], [396, 1864], [399, 1887], [421, 1891], [440, 1899], [468, 1940], [480, 1985]].map(([x, z]) => V(x, 0, z));   // behind the stand (photo 1 II 2026)
+    const meshTex = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d");
+      // galvanized chain-link: square ~5 cm meshes set at 45 degrees, so they read as diamonds (author, 18 XI)
+      x.strokeStyle = "rgba(176,180,178,1)"; x.lineWidth = 3; x.beginPath(); x.moveTo(0, 0); x.lineTo(64, 64); x.moveTo(64, 0); x.lineTo(0, 64); x.stroke();
+      const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; })();
+    const wireM = new THREE.MeshStandardMaterial({ map: meshTex, alphaTest: 0.35, transparent: false, side: THREE.DoubleSide, metalness: 0.6, roughness: 0.5 });
+    const postM = new THREE.MeshStandardMaterial({ color: 0x9da2a0, metalness: 0.6, roughness: 0.45 }), baseM = new THREE.MeshStandardMaterial({ color: 0x9a978f, roughness: 0.95 });
+    const postG = new THREE.BoxGeometry(0.06, 2.1, 0.06), railG = new THREE.CylinderGeometry(0.02, 0.02, 1, 8), fence = new THREE.Group(); fence.name = "fence";
+    for (let i = 0; i < FENCE.length - 1; i++) {
+      const a = FENCE[i], b = FENCE[i + 1], L = a.distanceTo(b), n = Math.max(1, Math.round(L / 3));
+      for (let k = 0; k < n; k++) {
+        const p = a.clone().lerp(b, k / n), q = a.clone().lerp(b, (k + 1) / n), y0 = hAt(p.x, p.z), y1 = hAt(q.x, q.z);
+        const post = new THREE.Mesh(postG, postM); post.position.set(p.x, y0 + 1.05 + 0.05, p.z); fence.add(post);
+        const len = p.distanceTo(q), mid = p.clone().lerp(q, 0.5), ym = (y0 + y1) / 2, yaw = Math.atan2(q.x - p.x, q.z - p.z);
+        const base = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.45, len), baseM); base.position.set(mid.x, ym + 0.08, mid.z); base.rotation.y = yaw; fence.add(base);
+        const net = new THREE.Mesh(new THREE.PlaneGeometry(len, 1.75), wireM.clone()); net.material.map = meshTex.clone(); net.material.map.repeat.set(len / 0.0707, 1.75 / 0.0707);   // one tile = one diamond, diagonal of a 5 cm square net.material.map.needsUpdate = true;
+        net.position.set(mid.x, ym + 0.3 + 0.875, mid.z); net.rotation.y = yaw + Math.PI / 2; fence.add(net);
+        const rail = new THREE.Mesh(railG, postM); rail.scale.y = len; rail.position.set(mid.x, ym + 2.07, mid.z); rail.rotation.set(Math.PI / 2, yaw, 0, "YXZ"); fence.add(rail);
+      }
+      const end = FENCE[FENCE.length - 1]; if (i === FENCE.length - 2) { const post = new THREE.Mesh(postG, postM); post.position.set(end.x, hAt(end.x, end.z) + 1.1, end.z); fence.add(post); }
+    }
+    // small shelter with a table for the ammunition NCO, on the range side of the fence level with the stand (author, 18 XI)
+    { const sh = new THREE.Group(), at = V(422, 0, 1868), yaw = Math.atan2(FENCE[4].x - FENCE[3].x, FENCE[4].z - FENCE[3].z), wood = new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 0.85 });
+      const roofM = new THREE.MeshStandardMaterial({ color: 0x55605a, metalness: 0.4, roughness: 0.6, side: THREE.DoubleSide });
+      for (const [x, z, h] of [[-1.5, -1.1, 2.5], [1.5, -1.1, 2.5], [-1.5, 1.1, 2.2], [1.5, 1.1, 2.2]]) { const pst = new THREE.Mesh(new THREE.BoxGeometry(0.1, h, 0.1), postM); pst.position.set(x, h / 2, z); sh.add(pst); }
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.04, 2.7), roofM); roof.position.set(0, 2.38, 0); roof.rotation.x = Math.atan2(0.3, 2.2); sh.add(roof);
+      const top = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.05, 0.8), wood); top.position.set(0, 0.76, 0); sh.add(top);
+      for (const [x, z] of [[-0.9, -0.3], [0.9, -0.3], [-0.9, 0.3], [0.9, 0.3]]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.74, 0.06), wood); leg.position.set(x, 0.37, z); sh.add(leg); }
+      for (const z of [-0.7, 0.7]) { const bench = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.05, 0.3), wood); bench.position.set(0, 0.45, z); sh.add(bench);
+        for (const x of [-0.85, 0.85]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.44, 0.26), wood); l.position.set(x, 0.22, z); sh.add(l); } }
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, 0.16), new THREE.MeshStandardMaterial({ color: 0x4a5236, roughness: 0.7 })); box.position.set(0.5, 0.87, 0.1); sh.add(box);   // ammo can
+      sh.position.set(at.x, hAt(at.x, at.z), at.z); sh.rotation.y = yaw; fence.add(sh); }
+    fence.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); scene.add(fence); }
+  // ---------- sparse fair-weather clouds (author, 18 XI): a few soft sprites high up, drifting slowly ----------
+  const clouds = new THREE.Group(); clouds.name = "clouds";
+  { const cloudTex = seed => { const c = document.createElement("canvas"); c.width = 512; c.height = 256; const x = c.getContext("2d"); let r = seed;
+      const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
+      for (let i = 0; i < 42; i++) { const cx = 90 + rnd() * 330, cy = 120 + (rnd() - 0.5) * 70 - Math.sin((cx - 90) / 330 * Math.PI) * 35, rr = 28 + rnd() * 55;
+        const g = x.createRadialGradient(cx, cy, 0, cx, cy, rr); g.addColorStop(0, "rgba(255,255,255,0.55)"); g.addColorStop(0.6, "rgba(250,250,252,0.22)"); g.addColorStop(1, "rgba(245,245,250,0)");
+        x.fillStyle = g; x.fillRect(cx - rr, cy - rr, rr * 2, rr * 2); }
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
+    let r = 7; const rnd = () => (r = (r * 48271) % 2147483647) / 2147483647;
+    for (let i = 0; i < 9; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex(1234 + i * 97), transparent: true, depthWrite: false, fog: false, opacity: 0.9 }));
+      const ang = rnd() * Math.PI * 2, d = 900 + rnd() * 1800, w = 380 + rnd() * 520;
+      sp.position.set(fp.x + Math.cos(ang) * d, 520 + rnd() * 380, fp.z + Math.sin(ang) * d); sp.scale.set(w, w * 0.42, 1); sp.userData.v = 1.5 + rnd() * 1.5; clouds.add(sp); }
+    scene.add(clouds); }
+
   // ---------- soldiers ----------
-  function soldier() {
-    const m = SkeletonUtils.clone(gltf.scene); m.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; o.frustumCulled = false; } }); scene.add(m);
+  // src: the model with its own clips; extra: clips of the other model (same Mixamo bone names) used where it has none
+  function soldier(src = gltf, extra = []) {
+    const m = SkeletonUtils.clone(src.scene); m.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; o.frustumCulled = false; } }); scene.add(m);
     const mixer = new THREE.AnimationMixer(m), acts = {};
-    for (const c of gltf.animations) { const a = mixer.clipAction(c); a.play(); a.setEffectiveWeight(0); a.paused = true; acts[c.name] = a; }
+    const own = new Set(src.animations.map(c => c.name));
+    for (const c of [...src.animations, ...extra.filter(c => !own.has(c.name))]) { const a = mixer.clipAction(c); a.play(); a.setEffectiveWeight(0); a.paused = true; acts[c.name] = a; }
     // The mixer writes a bone only when its clip value changed since the last frame, so on a still pose the IK and
     // breathing offsets of the previous frame would stay and pile up. Keep the clean clip pose and restore it first.
     const bones = []; m.traverse(o => { if (o.isBone) bones.push(o); });
@@ -210,12 +263,14 @@ export async function play(ctx) {
     };
     return { m, mixer, acts, pose, rig: makeRig(THREE, m) };
   }
-  const man = soldier(), inst = soldier();
+  const man = soldier(), inst = soldier(instG, gltf.animations);   // instructor: wz.93 uniform model (Meshy, from the KBW boards)
   // active hearing protection: two cups over the ears and a headband, on the head bone of both soldiers
   // active hearing protection: Sordin Supreme Pro-X LED (props.js) on the head bone of both soldiers, cups outside the hood
   // head width, under the hood (author, 17 XI)
   const earDefenders = sd => { const h = makeSordin(THREE, { earX: 0.082, earY: 0.072, apexY: 0.205 }); sd.rig.B.Head.add(h); return h; };
-  earDefenders(man); earDefenders(inst);
+  earDefenders(man);
+  // the instructor has no hood: a smaller head, cups higher over the ears, band over the crown (author, 18 XI)
+  const instEars = (() => { const h = makeSordin(THREE, window.__earTune || { earX: 0.074, earY: 0.105, apexY: 0.215 }); inst.rig.B.Head.add(h); return h; })();
   const handsMan = makeGloves(THREE, man, gloveG.scene, { clone: SkeletonUtils.clone }), handsInst = makeGloves(THREE, inst, gloveG.scene, { clone: SkeletonUtils.clone });
 
   // measure poses once: where the eye (headfront) sits in the prone pose, relative to the root
@@ -432,10 +487,19 @@ export async function play(ctx) {
   const INSPECT = RL(V(0.55, 0, -0.42)).setY(0), INSPECT_YAW = yawOf(RL(V(0, 0, -0.43)).sub(INSPECT).setY(0));
   // the instructor walks to the right side of the rifle, kneels, bends over the ejection port and checks it; he says
   // "Sprawdziłem!" still kneeling and gets up during the next sentence
+  // the instructor goes round behind the shooter's feet to the right side of the rifle: never over him, never in front
+  // of the muzzle (author, 18 XI)
+  const INSPECT_ROUTE = [INST, W(-1.6, 2.2), W(-2.9, 1.2), W(-2.9, -1.0), W(-0.9, -0.9), g(INSPECT.clone())];
+  function routeAt(pts, k) {
+    const seg = pts.slice(1).map((p, i) => p.distanceTo(pts[i])), total = seg.reduce((a, b) => a + b, 0);
+    let d = k * total, i = 0; while (i < seg.length - 1 && d > seg[i]) { d -= seg[i]; i++; }
+    const a = pts[i], b = pts[i + 1], at = a.clone().lerp(b, Math.min(1, d / seg[i]));
+    return { at, yaw: yawOf(b.clone().sub(a).setY(0)), dist: k * total };
+  }
   const instKneel = (S, k, lean, look) => { S.inst.at = g(INSPECT.clone()); S.inst.yaw = INSPECT_YAW; S.inst.clips = [["Kneel_on_One_Knee_and_Stand", lerp(1.9, 0, k), 1]]; S.inst.lean = lean; S.inst.look = look; };
   B(18, "s18.inspect", (S, u) => { unloaded(S); S.man.R = null;
     const k1 = ease(seg(u, 0, 0.35)), k2 = ease(seg(u, 0.35, 0.5));
-    if (k1 < 1) { S.inst.at = INST.clone().lerp(g(INSPECT.clone()), k1); S.inst.yaw = yawOf(g(INSPECT.clone()).sub(INST)); S.inst.clips = [["Walking", 0, 1]]; S.inst.walk = k1 * INST.distanceTo(INSPECT); }
+    if (k1 < 1) { const p = routeAt(INSPECT_ROUTE, k1); S.inst.at = p.at; S.inst.yaw = p.yaw; S.inst.clips = [["Walking", 0, 1]]; S.inst.walk = p.dist; }
     else instKneel(S, k2, 0.75 * k2, u > 0.5 ? "port" : "shooter");
     S.cam = u < 0.35 ? { kind: "world", pos: W(-3.0, -2.6, 1.4), look: W(-0.4, 0.4, 0.5), fov: 40 } : { kind: "world", pos: RL(V(1.7, 0.8, -2.2)), look: RL(V(0.35, 0.25, -0.45)), fov: 42 }; });
   B(18, "s18.checked", (S, u) => { unloaded(S); S.man.R = null; instKneel(S, 1, 0.3, "shooter"); S.inst.speak = true;
