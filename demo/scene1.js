@@ -531,7 +531,7 @@ export async function play(ctx) {
     return { p: pp, q: q.clone().slerp(qGround, k) };
   }
   const HANDS = {   // rifle-local wrist and knuckle targets
-    grip: [[0.032, -0.078, -0.252], [-0.022, -0.118, -0.352]], handguard: [[-0.035, -0.07, -0.66], [0.02, -0.05, -0.74]],
+    grip: [[0.03, -0.066, -0.228], [-0.022, -0.106, -0.33]], handguard: [[-0.035, -0.07, -0.66], [0.02, -0.05, -0.74]],
     bipod: [[-0.06, -0.12, -0.80], [0.0, -0.2, -0.86]], charging: [[0.075, 0.02, -0.52], [0.045, 0.02, -0.57]],
     chamber: [[0.10, 0.03, -0.38], [0.025, 0.0, -0.45]], capF: [[0.07, 0.11, -0.53], [0.01, 0.09, -0.585]], capR: [[0.07, 0.10, -0.19], [0.01, 0.086, -0.225]],
     capDropF: [[0.19, -0.17, -0.31], [0.17, -0.24, -0.37]], capDropR: [[0.23, -0.17, -0.22], [0.21, -0.24, -0.28]],
@@ -653,7 +653,10 @@ export async function play(ctx) {
     { const h = S.man.R, key = typeof h === "string" ? h : h && (h.to || (h.man ? "man" : null));
       const hold = { capF: 0.55, capR: 0.55, capDropF: 0.55, capDropR: 0.55, kestrel: 0.7, kestrelUp: 0.7, kestrelRead: 0.7, write: 0.6, magwell: 0.65, magload: 0.6, maginspect: 0.6, elev: 0.5, windage: 0.5, charging: 0.7, man: 0.6 }[key];
       const index = S.man.trigger ? 0.42 : key === "chamber" ? 0.0 : key === "grip" ? 0.06 : key === "write" ? 0.45 : null;   // off the trigger along the receiver unless firing
-      handsMan.update({ R: { curl: key === "chamber" ? 0.75 : hold ?? (h ? S.man.curl.R : 0.25), index, thumb: key === "grip" ? 0.6 : null },
+      // on the grip the index finger is raised: its pad on the trigger when firing, otherwise straight along the receiver
+      // above the trigger guard (joint angles measured against the Grot's trigger)
+      const gripIdx = key === "grip" ? (S.man.trigger ? { indexA: [-0.35, 1.2 + 0.15 * (S.man.press || 0), 0.2], indexUp: -0.7 } : { indexA: [-0.36, -0.41, -0.28], indexUp: -0.9 }) : {};
+      handsMan.update({ R: { curl: key === "chamber" ? 0.75 : hold ?? (h ? S.man.curl.R : 0.25), index, thumb: key === "grip" ? 0.6 : null, ...gripIdx },
                         L: { curl: S.man.L ? (S.man.L === "bag" ? 0.75 : S.man.L === "handguard" ? 0.6 : 0.55) : 0.25 } });
       handsInst.update({ R: { curl: 0.3 }, L: { curl: 0.3 } }); }
     // shots: tracer, flash, case, gong

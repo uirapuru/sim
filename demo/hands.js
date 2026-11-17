@@ -124,13 +124,16 @@ export function makeGloves(THREE, soldier, gltfScene, { clone } = {}) {
     hands[side] = { g, bone, fing, restQ };
   }
   Object.defineProperty(hands.R.g, "visible", { get: () => root.visible, set: v => { root.visible = v; hands.L.g.children.forEach(c => c.visible = v); } });
-  const q = new THREE.Quaternion(), AX = V(1, 0, 0);
+  const q = new THREE.Quaternion(), q2 = new THREE.Quaternion(), AX = V(1, 0, 0), AXZ = V(0, 0, 1);
   const pose = (h, f, angles) => h.fing[f].forEach((b, i) => b.quaternion.copy(h.restQ[f][i]).multiply(q.setFromAxisAngle(AX, angles[i])));
   function update(p) {
     for (const side of ["R", "L"]) {
       const h = hands[side], s = p[side] || { curl: 0.3 };
+      if (h.bone.scale.x < 0.01) h.bone.scale.setScalar(1);       // a second update in the same frame: undo the collapse
       h.bone.updateMatrixWorld(true); h.g.matrix.copy(h.bone.matrixWorld); h.g.updateMatrixWorld(true);
       for (const f of ["index", "middle", "ring", "pinky"]) { const c = f === "index" && s.index != null ? s.index : s.curl; pose(h, f, [c * 1.45, c * 1.65, c * 1.1]); }
+      if (s.indexA) pose(h, "index", s.indexA);                    // explicit index joint angles (trigger finger)
+      if (s.indexUp) h.fing.index[0].quaternion.copy(h.restQ.index[0]).multiply(q.setFromAxisAngle(AXZ, s.indexUp)).multiply(q2.setFromAxisAngle(AX, s.indexA ? s.indexA[0] : (s.index ?? s.curl) * 1.45));   // index spread sideways
       const t = s.thumb ?? s.curl * 0.8; pose(h, "thumb", [t * 0.35, t * 0.6, t * 0.6]);
       h.g.updateMatrixWorld(true);
       h.bone.scale.setScalar(0.001); h.bone.updateMatrixWorld(true);   // hide the mitten (restored with the next clean pose)
