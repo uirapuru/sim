@@ -318,7 +318,7 @@ export async function play(ctx) {
   B(6, "s06.prone", (S, u) => { ready(S); const k = ease(u); S.man.at = KNEEL.clone().lerp(PRONE, k); S.man.yaw = lerp(KNEEL_YAW, yawFwd, k);
     S.man.clips = [["Kneel_on_One_Knee_and_Stand", 0, 1 - k], ["Prone_Fire", 0.5, k]]; S.man.R = u > 0.7 ? "grip" : null; S.man.L = u > 0.8 ? "bag" : null; S.cam = { kind: "follow", off: [2.6, 1.0, 0.2], look: [0, 0.3, 0.6] }; });
   const prone0 = S => { ready(S); pronePose(S); shootingHands(S); };
-  B(6, "s06.bag", (S, u) => { prone0(S); S.cam = { kind: "rifle", pos: [0.42, -0.08, -0.32], look: [0, -0.17, -0.07], fov: 40 }; });
+  B(6, "s06.bag", (S, u) => { prone0(S); S.cam = { kind: "rifle", pos: [-0.42, -0.02, -0.62], look: [-0.03, -0.16, -0.06], near: true, fov: 40 }; });   // from the left, from the muzzle side
   B(6, "s06.cheek", (S, u) => { prone0(S); S.cam = { kind: "follow", off: [0.9, 0.45, -0.9], look: [0, 0.3, 0.6] }; });
   // 7 "Ładuj!": magazine from the pouch into the rifle, round chambered, still on safe
   cmd(7, "s07.cmd", S => prone0(S));
@@ -576,6 +576,12 @@ export async function play(ctx) {
       if (!S.man.look) rig.eyeTo(rifle.localToWorld(V(0, 0.0857, -0.2314 + 0.07)), V(0, 0, -1).applyQuaternion(rifle.quaternion));
     }
     rig.bend((S.man.lean || 0) + (prone_ ? 0.012 : 0.022) * Math.sin(2 * Math.PI * T / 4.2));
+    // nothing under the ground: when blended poses (kneel -> prone) push a body part below the surface, lift the soldier
+    { let low = Infinity;
+      for (const [n, clear] of [["Hips", 0.1], ["Spine1", 0.1], ["Spine2", 0.1], ["Head", 0.12], ["LeftLeg", 0.06], ["RightLeg", 0.06], ["LeftFoot", 0.05], ["RightFoot", 0.05], ["LeftToe_End", 0.0], ["RightToe_End", 0.0], ["LeftForeArm", 0.05], ["RightForeArm", 0.05]]) {
+        const b = man.m.getObjectByName("mixamorig:" + n) || man.m.getObjectByName("mixamorig" + n); if (!b) continue;
+        const p = b.getWorldPosition(V()); low = Math.min(low, p.y - hAt(p.x, p.z) - clear); }
+      if (low < 0) { man.m.position.y -= low; man.m.updateMatrixWorld(true); } }
     if (rig.B.Head && !S.man.look) rig.B.Head.rotateY(0.05 * Math.sin(2 * Math.PI * T / 7.3) + 0.025 * Math.sin(2 * Math.PI * T / 2.9));
     if (rig.B.Hips && !prone_) rig.B.Hips.rotateZ(0.012 * Math.sin(2 * Math.PI * T / 5.6));
     man.m.updateMatrixWorld(true);
