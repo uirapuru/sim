@@ -297,7 +297,25 @@ export async function play(ctx) {
     };
     return { m, mixer, acts, pose, rig: makeRig(THREE, m) };
   }
-  const man = soldier(gltf, animG.animations), inst = soldier(instG, gltf.animations);   // + Meshy motions: going prone, getting up   // instructor: wz.93 uniform model (Meshy, from the KBW boards)
+  const man = soldier(gltf, animG.animations), inst = soldier(instG, gltf.animations);
+  // national flag patches on both sleeves (author, 18 XI): regulation 5:8, 42 x 26 mm, white up, on the outer side of
+  // the upper arm a third of the way down to the elbow; placed by a ray onto the sleeve and carried by the arm bone
+  { const c = document.createElement("canvas"); c.width = 80; c.height = 50; const x = c.getContext("2d");
+    x.fillStyle = "#f2f2ee"; x.fillRect(0, 0, 80, 25); x.fillStyle = "#c8102e"; x.fillRect(0, 25, 80, 25); x.strokeStyle = "#3b3f2c"; x.lineWidth = 3; x.strokeRect(1.5, 1.5, 77, 47);
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const fm = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -4 });
+    inst.pose([["Idle", 0, 1]]); inst.m.updateMatrixWorld(true);
+    const targets = []; inst.m.traverse(o => { if (o.isMesh && !/flag/.test(o.name)) targets.push(o); });
+    const hips = inst.rig.B.Hips.getWorldPosition(V()), ray = new THREE.Raycaster();
+    for (const P of ["Left", "Right"]) {
+      const sh = inst.rig.B[P + "Arm"].getWorldPosition(V()), el = inst.rig.B[P + "ForeArm"].getWorldPosition(V()), axis = sh.clone().sub(el).normalize();
+      const p0 = sh.clone().lerp(el, 0.33), out = p0.clone().sub(V(hips.x, p0.y, hips.z)); out.addScaledVector(axis, -out.dot(axis)).normalize();
+      ray.set(p0.clone().addScaledVector(out, 0.3), out.clone().negate()); const hit = ray.intersectObjects(targets, false)[0]; if (!hit) continue;
+      const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : out.clone(); if (n.dot(out) < 0) n.negate();
+      const up_ = axis.clone().addScaledVector(n, -axis.dot(n)).normalize(), across = up_.clone().cross(n).normalize();
+      const flagM = new THREE.Mesh(new THREE.PlaneGeometry(0.042, 0.02625), fm); flagM.name = "flag_" + P;
+      flagM.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(across, up_, n)); flagM.position.copy(hit.point).addScaledVector(n, 0.004);
+      scene.add(flagM); inst.rig.B[P + "Arm"].attach(flagM); } }   // + Meshy motions: going prone, getting up   // instructor: wz.93 uniform model (Meshy, from the KBW boards)
   // active hearing protection: two cups over the ears and a headband, on the head bone of both soldiers
   // active hearing protection: Sordin Supreme Pro-X LED (props.js) on the head bone of both soldiers, cups outside the hood
   // head width, under the hood (author, 17 XI)
