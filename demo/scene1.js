@@ -480,7 +480,19 @@ export async function play(ctx) {
   B(6, "s06.cheek", (S, u) => { prone0(S); S.cam = { kind: "follow", off: [0.9, 0.45, -0.9], look: [0, 0.3, 0.6] }; });
   // 7 "Ładuj!": magazine from the pouch into the rifle, round chambered, still on safe
   cmd(7, "s07.cmd", S => prone0(S));
-  B(7, "s07.mag", (S, u) => { prone0(S); S.props.roundsInMag = 3; S.man.R = u < 0.55 ? "magwell" : "grip"; S.props.mag = u < 0.55 ? "well" : null; S.rifle.magIn = u >= 0.55;
+  // the hand brings the magazine from the pouch under the well, pushes it up into the well and gives it a light tug
+  // down (author, 18 XI); magOff = the magazine's offset from its seated place, the hand holds its base (HANDS.magwell)
+  const MAG_FAR = [0.22, -0.12, 0.32], MAG_BELOW = [0, -0.07, 0.005], MAG_HOLD = [[0.035, -0.17, -0.44], [0.004, -0.122, -0.47]];   // palm under the base
+  B(7, "s07.mag", (S, u) => { prone0(S); S.props.roundsInMag = 3;
+    const mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k), withMag = (off, key = "magwell") => { S.props.mag = "insert"; S.props.magOff = off;
+      S.man.R = { at: MAG_HOLD.map(p => p.map((v, i) => v + off[i])), to: key }; };
+    if (u < 0.12) { const k = ease(seg(u, 0, 0.12)), far = MAG_HOLD.map(p => p.map((v, i) => v + MAG_FAR[i]));   // empty hand off to the pouch
+      S.man.R = { at: [0, 1].map(i => mix(HANDS.grip[i], far[i], k)), to: "grip" }; }
+    else if (u < 0.36) withMag(mix(MAG_FAR, MAG_BELOW, ease(seg(u, 0.12, 0.36))));                  // into the frame, lined up under the well
+    else if (u < 0.42) withMag(MAG_BELOW);
+    else if (u < 0.5) withMag(mix(MAG_BELOW, [0, 0, 0], seg(u, 0.42, 0.5) ** 2));                    // pushed up into the well
+    else if (u < 0.62) withMag([0, -0.005 * Math.sin(Math.PI * seg(u, 0.52, 0.6)), 0]);               // a light tug down: it holds
+    else { const k = ease(seg(u, 0.62, 0.82)); S.rifle.magIn = true; S.man.R = k < 1 ? { at: [0, 1].map(i => mix(MAG_HOLD[i], HANDS.grip[i], k)), to: "grip" } : "grip"; }
     S.cam = { kind: "rifle", pos: [0.4, -0.12, -0.3], look: [0, -0.1, -0.47], fov: 36 }; });
   B(7, "s07.chamber", (S, u) => { prone0(S); S.rifle.magIn = true; S.rifle.boltOpen = u < 0.4; S.man.L = u < 0.5 ? "boltcatch" : "bag"; S.cam = { kind: "rifle", pos: [-0.38, 0.05, -0.36], look: [0, -0.03, -0.44], fov: 34 }; });
   const prone = S => { prone0(S); S.rifle.magIn = true; S.rifle.boltOpen = false; };
@@ -902,7 +914,7 @@ export async function play(ctx) {
     for (const side of ["R", "L"]) {                          // a key, or {from, to, k}: the hand travels between two holds
       const h = S.man[side]; if (!h) continue;
       if (h.man) { rig.arm(side, man.m.localToWorld(V(...h.man[0])), man.m.localToWorld(V(...h.man[1]))); continue; }
-      const tgt = window.__hk && window.__hk.key === h ? [window.__hk.wrist, HANDS[h][1]] : h === "grip" && window.__gripWrist ? [window.__gripWrist, HANDS.grip[1]] : typeof h === "string" ? HANDS[h] : (() => { const a = HANDS[h.from], b = HANDS[h.to]; return a && b ? [0, 1].map(i => a[i].map((v, j) => v + (b[i][j] - v) * h.k)) : null; })();
+      const tgt = typeof h === "object" && h.at ? h.at : window.__hk && window.__hk.key === h ? [window.__hk.wrist, HANDS[h][1]] : h === "grip" && window.__gripWrist ? [window.__gripWrist, HANDS.grip[1]] : typeof h === "string" ? HANDS[h] : (() => { const a = HANDS[h.from], b = HANDS[h.to]; return a && b ? [0, 1].map(i => a[i].map((v, j) => v + (b[i][j] - v) * h.k)) : null; })();
       if (!tgt) continue;
       let wr = V(...tgt[0]); const tax = side === "R" && typeof h === "string" ? TURRET_AX[h] : null;
       if (tax) wr = wr.sub(tax.p).applyAxisAngle(tax.a, twistOf(h, S)).add(tax.p);
@@ -969,6 +981,8 @@ export async function play(ctx) {
     if (S.props.mag === "chest") {                                   // held upright in front of the chest, lips up
       const q = man.m.quaternion.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0)));
       magProp.quaternion.copy(q); magProp.position.copy(man.m.localToWorld(V(0.0, 1.0, 0.34))).sub(MAG_C.clone().applyQuaternion(q));
+    } else if (S.props.mag === "insert") {                          // the mesh is in rifle coordinates: offset from its seated place
+      magProp.position.copy(rifle.localToWorld(V(...S.props.magOff))); magProp.quaternion.copy(rifle.quaternion);
     } else if (magProp.visible) {
       const at = { hands: V(-0.17, -0.2, -0.43), well: V(0, -0.2, -0.47), inspect: V(-0.09, -0.02, -0.47), ground: V(-0.22, -0.21, -0.55) }[S.props.mag] || V();
       magProp.position.copy(rifle.localToWorld(at)); magProp.quaternion.copy(rifle.quaternion);
