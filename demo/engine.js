@@ -7,6 +7,17 @@
 // Narration plays from HTMLAudio elements kept in sync with T; one-shot sounds (shot, gong) fire when playback
 // crosses their time. Nothing here knows about the soldier or the rifle: scene1.js renders S.
 
+// One volume for the narration and the effects (shot, gong): 0..1 plus mute, remembered in this browser.
+const readPref = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
+const writePref = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
+export const volume = {
+  level: readPref("sim.volume", 0.8), muted: readPref("sim.muted", false), subs: new Set(),
+  get gain() { return this.muted ? 0 : this.level; },
+  set(level, muted = this.muted) { this.level = Math.max(0, Math.min(1, level)); this.muted = muted;
+    writePref("sim.volume", this.level); writePref("sim.muted", this.muted); this.subs.forEach(f => f(this.gain)); },
+  bind(ac) { const g = ac.createGain(); g.gain.value = this.gain; g.connect(ac.destination); this.subs.add(v => g.gain.setTargetAtTime(v, ac.currentTime, 0.02)); return g; },
+};
+
 export class Timeline {
   constructor({ beats, manifest, audioDir, audioQuery = "", init, sceneTitles, pad = 0.35 }) {
     this.beats = beats; this.init = init; this.sceneTitles = sceneTitles;
@@ -21,7 +32,7 @@ export class Timeline {
       if (m) b.file = `${audioDir}/${m.file}${audioQuery}`;   // re-voiced clips keep their names: never take them from the cache
     }
     this.total = t;
-    this.ac = new (window.AudioContext || window.webkitAudioContext)();
+    this.ac = new (window.AudioContext || window.webkitAudioContext)(); this.out = volume.bind(this.ac);
     this.src = null;                                   // {beat, node} currently speaking
     this.sceneStarts = {};
     for (const b of beats) if (!(b.scene in this.sceneStarts)) this.sceneStarts[b.scene] = b.start;
@@ -68,7 +79,7 @@ export class Timeline {
       if (Math.abs(played - off) < 0.25) return;
     }
     this.stopVoice();
-    const node = this.ac.createBufferSource(); node.buffer = want.buffer; node.connect(this.ac.destination);
+    const node = this.ac.createBufferSource(); node.buffer = want.buffer; node.connect(this.out);
     node.start(0, off); this.src = { beat: want, node, t0: this.ac.currentTime, off };
   }
   seek(T) { this.T = Math.max(0, Math.min(this.total, T)); this.stopVoice(); this.syncAudio(); }
@@ -89,11 +100,34 @@ const CSS = `
 #demoPanel .title { font-weight: 600; color: #f2c94c; }
 #demoSub { position: fixed; left: 50%; transform: translateX(-50%); bottom: 112px; z-index: 79; max-width: min(900px, 90vw);
   background: rgba(0,0,0,.72); color: #fff; padding: 7px 14px; border-radius: 5px; font: 17px/1.35 system-ui, sans-serif; text-align: center; }
+#demoPanel { background: rgba(12,14,16,.62); backdrop-filter: blur(3px); }
+#demoPanel .vol { display: flex; align-items: center; gap: 4px; }
+#demoPanel .vol input[type=range] { flex: none; width: 90px; min-width: 0; }
+#lessonSide { position: fixed; top: 0; right: 0; bottom: 64px; width: 300px; max-width: 86vw; z-index: 85; background: rgba(12,14,16,.9); color: #eee;
+  font: 14px system-ui, sans-serif; padding: 56px 14px 14px; box-sizing: border-box; overflow-y: auto; transform: translateX(100%); transition: transform .2s; }
+#lessonSide.open { transform: none; }
+#lessonSide h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #aaa; }
+#lessonSide h3.gap { margin-top: 18px; }
+#lessonSide .lesson { font-weight: 600; color: #f2c94c; margin: 4px 0 8px; }
+#lessonSide button { display: block; width: 100%; text-align: left; background: none; color: #ddd; border: 0; border-radius: 4px; padding: 6px 8px; font: inherit; cursor: pointer; }
+#lessonSide button:hover { background: #2a2e33; }
+#lessonSide button.on { background: #f2c94c; color: #111; }
+#lessonSide button .n { display: inline-block; width: 26px; color: #888; }
+#lessonSide button.on .n { color: #111; }
+#lessonSide .tasks { display: flex; gap: 8px; }
+#lessonSide .tasks button { text-align: center; border: 1px solid #555; }
+#lessonSide .tasks button:disabled { opacity: .45; cursor: default; background: none; }
+#sideToggle { position: fixed; top: 12px; right: 12px; z-index: 86; background: rgba(12,14,16,.75); color: #eee; border: 1px solid #555; border-radius: 6px;
+  font: 18px system-ui; width: 40px; height: 36px; cursor: pointer; }
+#startVeil { position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; background: rgba(0,0,0,.35); }
+#startVeil button { background: #f2c94c; color: #111; border: 0; border-radius: 10px; padding: 18px 42px; font: 700 24px system-ui; cursor: pointer;
+  box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+#startVeil .t { color: #fff; font: 600 18px system-ui; text-align: center; margin-bottom: 18px; text-shadow: 0 2px 6px #000; }
 #demoSub.instr { color: #ffd84d; font-weight: 700; }
 #demoSub:empty { display: none; }
 `;
 
-export function makePanel(tl, { onToggleLabels, onCamMode, title }) {
+export function makePanel(tl, { onToggleLabels, onCamMode, title, lesson = title, onTask }) {
   const st = document.createElement("style"); st.textContent = CSS; document.head.append(st);
   const p = document.createElement("div"); p.id = "demoPanel";
   const sub = document.createElement("div"); sub.id = "demoSub";
@@ -119,8 +153,31 @@ export function makePanel(tl, { onToggleLabels, onCamMode, title }) {
   // camera modes in turn: the script's shots, the shooter's own eyes (first person), free (drag, wheel, WSAD + QE)
   const MODES = [["script", "Kamera: scenariusz"], ["fpp", "Kamera: oczy strzelca"], ["free", "Kamera: swobodna"]]; let mode = 0;
   const camB = btn("Kamera: scenariusz", "Przełącz kamerę: scenariusz → oczy strzelca → swobodna", () => { mode = (mode + 1) % MODES.length; camB.textContent = MODES[mode][1]; camB.classList.toggle("on", mode > 0); onCamMode(MODES[mode][0]); });
+  // volume: speaker (mute) + slider; M toggles mute
+  const vol = document.createElement("span"); vol.className = "vol";
+  const muteB = btn("", "Wycisz / włącz dźwięk (M)", () => volume.set(volume.level, !volume.muted));
+  const volS = document.createElement("input"); volS.type = "range"; volS.min = 0; volS.max = 1; volS.step = 0.05; volS.title = "Głośność";
+  volS.oninput = () => volume.set(+volS.value, false);
+  const showVol = () => { muteB.textContent = volume.muted || volume.level === 0 ? "🔇" : volume.level < 0.5 ? "🔉" : "🔊"; volS.value = volume.muted ? 0 : volume.level; };
+  volume.subs.add(showVol); showVol(); vol.append(muteB, volS);
+  // full screen (no browser bars)
+  const toggleFs = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {});
+  const fsB = btn("⛶", "Pełny ekran (F)", toggleFs);
   row1.append(ttl);
-  row2.append(start, prev, ...scnBtns, next, playB, slider, time, subB, labB, camB);
+  row2.append(start, prev, ...scnBtns, next, playB, slider, time, vol, subB, labB, camB, fsB);
+  // side panel: the lesson (the whole scenario) with its chapters, and the tasks
+  const side = document.createElement("div"); side.id = "lessonSide";
+  const tog = document.createElement("button"); tog.id = "sideToggle"; tog.textContent = "☰"; tog.title = "Lekcje i zadania";
+  tog.onclick = () => { side.classList.toggle("open"); tog.textContent = side.classList.contains("open") ? "✕" : "☰"; };
+  side.innerHTML = `<h3>Lekcje</h3><div class="lesson">1. ${lesson}</div>`;
+  const chBtns = tl.scenes.map(n => { const b = document.createElement("button"); b.innerHTML = `<span class="n">${n}</span>${tl.sceneTitles[n] || ""}`;
+    b.title = "Rozdział " + n; b.onclick = () => { tl.seek(tl.sceneStarts[n] + 0.001); tl.play(); }; side.append(b); return b; });
+  const th = document.createElement("h3"); th.className = "gap"; th.textContent = "Zadania";
+  const tasks = document.createElement("div"); tasks.className = "tasks";
+  for (const [k, t, h] of [["train", "Trening", "Samodzielne wykonanie kolejnych czynności"], ["exam", "Egzamin", "Na czas, bez podpowiedzi"]]) {
+    const b = document.createElement("button"); b.textContent = t; b.title = onTask ? h : h + " (wkrótce)"; b.disabled = !onTask; b.onclick = () => onTask && onTask(k); tasks.append(b); }
+  side.append(th, tasks);
+  document.body.append(side, tog);
   p.append(row1, row2);
   function go(d) {
     const i = tl.scenes.indexOf(tl.sceneAt(tl.T)), n = tl.scenes[Math.max(0, Math.min(tl.scenes.length - 1, i + d))];
@@ -131,6 +188,8 @@ export function makePanel(tl, { onToggleLabels, onCamMode, title }) {
     if (e.code === "Space") { e.preventDefault(); tl.playing ? tl.pause() : tl.play(); }
     if (e.code === "ArrowRight" && e.shiftKey) go(1);
     if (e.code === "ArrowLeft" && e.shiftKey) go(-1);
+    if (e.code === "KeyM" && !e.ctrlKey) volume.set(volume.level, !volume.muted);
+    if (e.code === "KeyF" && !e.ctrlKey && !e.repeat) toggleFs();
   });
   const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   return {
@@ -138,6 +197,7 @@ export function makePanel(tl, { onToggleLabels, onCamMode, title }) {
       const n = tl.sceneAt(tl.T), b = tl.beatAt(tl.T);
       ttl.textContent = `${title} · scena ${n}/${tl.scenes.length}: ${tl.sceneTitles[n] || ""}`;
       scnBtns.forEach((x, i) => x.classList.toggle("on", tl.scenes[i] === n));
+      chBtns.forEach((x, i) => x.classList.toggle("on", tl.scenes[i] === n));
       playB.textContent = tl.playing ? "⏸" : "▶";
       if (!dragging) slider.value = tl.T;
       time.textContent = `${fmt(tl.T)} / ${fmt(tl.total)}`;
@@ -172,23 +232,31 @@ export function overlayLayer() {
 // ---- sounds (WebAudio, no files) ----
 export function sounds() {
   let ac = null;
-  const ctx = () => (ac = ac || new (window.AudioContext || window.webkitAudioContext)());
+  let out = null; const ctx = () => { if (!ac) { ac = new (window.AudioContext || window.webkitAudioContext)(); out = volume.bind(ac); } return ac; };
   return {
     shot() {
       const a = ctx(), n = a.sampleRate * 0.6, buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
       for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (a.sampleRate * 0.07));
       const s = a.createBufferSource(); s.buffer = buf; const f = a.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 2000;
-      const g = a.createGain(); g.gain.value = 0.9; s.connect(f).connect(g).connect(a.destination); s.start();
+      const g = a.createGain(); g.gain.value = 0.9; s.connect(f).connect(g).connect(out); s.start();
     },
     ding() {
-      const a = ctx(), g = a.createGain(); g.gain.setValueAtTime(0.3, a.currentTime); g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + 1.6); g.connect(a.destination);
+      const a = ctx(), g = a.createGain(); g.gain.setValueAtTime(0.3, a.currentTime); g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + 1.6); g.connect(out);
       for (const f of [1830, 2740, 4120]) { const o = a.createOscillator(); o.frequency.value = f; o.connect(g); o.start(); o.stop(a.currentTime + 1.6); }
     },
     click() {
       const a = ctx(), n = a.sampleRate * 0.02, buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
       for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (a.sampleRate * 0.002));
-      const s = a.createBufferSource(); s.buffer = buf; const g = a.createGain(); g.gain.value = 0.25; s.connect(g).connect(a.destination); s.start();
+      const s = a.createBufferSource(); s.buffer = buf; const g = a.createGain(); g.gain.value = 0.25; s.connect(g).connect(out); s.start();
     },
     unlock() { ctx().resume(); },
   };
+}
+
+// big "Rozpocznij" in the middle: browsers allow sound only after a click, so the scene starts on it
+export function startGate(title, onStart) {
+  const v = document.createElement("div"); v.id = "startVeil";
+  v.innerHTML = `<div><div class="t">${title}</div><div style="text-align:center"><button>▶ Rozpocznij</button></div></div>`;
+  v.querySelector("button").onclick = () => { v.remove(); onStart(); };
+  document.body.append(v); return v;
 }

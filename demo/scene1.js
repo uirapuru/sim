@@ -16,7 +16,7 @@ let running = false;
 export async function play(ctx) {
   // helper modules load with the same version tag as this file, so an edited helper is never served from the cache
   const ver = new URL(import.meta.url).search;
-  const [{ Timeline, makePanel, overlayLayer, sounds }, { makeRig }, { makeSordin, makeKestrel }, { makeHands, makeGloves }] =
+  const [{ Timeline, makePanel, overlayLayer, sounds, startGate }, { makeRig }, { makeSordin, makeKestrel }, { makeHands, makeGloves }] =
     await Promise.all(["engine", "rig", "props", "hands"].map(n => import(`./${n}.js${ver}`)));
   if (running) return; running = true;
   const { THREE, scene, camera, hAt, meta, FIRE, gltf, clips, SkeletonUtils, GLTFLoader } = ctx;
@@ -657,7 +657,7 @@ export async function play(ctx) {
   const impact = n => { const p = pathAt(RANGE, n), loc = pivot.worldToLocal(p.clone()); return [-loc.x, loc.y - (-0.82)]; };   // plate coords (x right from the shooter's view, y up)
 
   // ---------- render one evaluated state ----------
-  const panel = makePanel(tl, { title: TITLE, onToggleLabels: on => { labelsOn = on; if (!on) { tip.style.display = "none"; ctx.renderer.domElement.style.cursor = ""; } }, onCamMode: m => { freeCam = m === "free"; fpp = m === "fpp"; controls.enabled = freeCam; if (freeCam) { controls.target.copy(man.m.position).add(V(0, 0.6, 0)); } } });
+  const panel = makePanel(tl, { title: TITLE, lesson: "Strzelanie z SpKW/Z", onToggleLabels: on => { labelsOn = on; if (!on) { tip.style.display = "none"; ctx.renderer.domElement.style.cursor = ""; } }, onCamMode: m => { freeCam = m === "free"; fpp = m === "fpp"; controls.enabled = freeCam; if (freeCam) { controls.target.copy(man.m.position).add(V(0, 0.6, 0)); } } });
   let labelsOn = false, freeCam = false, fpp = false;
   // labels (author, 18 XI): with "Etykiety" on, hovering any part of the rifle shows its name (white on black)
   const PARTS = await fetch("models/grot_parts.json?v=" + Date.now()).then(r => r.json()).then(j => Object.fromEntries(j.parts.map(p => [p.id, p]))).catch(() => ({}));
@@ -1119,6 +1119,7 @@ export async function play(ctx) {
 
   (window.__frameHooks = window.__frameHooks || []).push(hook);
   addEventListener("pointerdown", () => snd.unlock(), { once: true });
+  startGate(TITLE, () => { snd.unlock(); tl.seek(0); tl.play(); });   // sound needs a click first: the scene starts on it
   window.__demo = { tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt };
 }
 
