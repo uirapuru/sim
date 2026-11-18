@@ -60,10 +60,13 @@ export async function startTask(mode, ctx, opts = {}) {
       const right = given => { if (!exam) view.feedback("Dobrze.", "ok"); finish({ ok: true, given, hinted }); };
       let onDown = null;
       if (st.kind === "action") {
-        onDown = async e => { if (e.button !== 0 || e.target !== canvas) return; const id = demo.pickAt(e.clientX, e.clientY);
+        // anywhere: the first step teaches the menu, so a click on any spot opens it (author, 18 XI)
+        if (st.anywhere) ui.center("Na początek kliknij gdziekolwiek na ekranie");
+        onDown = async e => { if (e.button !== 0 || e.target !== canvas) return; const id = st.anywhere ? st.target : demo.pickAt(e.clientX, e.clientY);
           if (!id) { if (!exam) view.feedback("Tu nic nie ma. Kliknij element w scenie.", "info"); return; }
-          const pick = await ui.menu(e.clientX, e.clientY, demo.nameOf(id), optionsFor(st, ACTION_POOL)); if (!pick || done) return;
-          const r = checkAction(st, { target: id, action: pick }), given = `${demo.nameOf(id)} → ${pick}`;
+          ui.hideCenter();
+          const pick = await ui.menu(e.clientX, e.clientY, st.anywhere ? "Co robisz?" : demo.nameOf(id), optionsFor(st, ACTION_POOL)); if (!pick || done) return;
+          const r = checkAction(st, { target: id, action: pick }), given = st.anywhere ? pick : `${demo.nameOf(id)} → ${pick}`;
           r === "ok" ? right(given) : wrong(given); };
       } else if (st.kind === "mark") {
         view.feedback("Kliknij na karcie ognia miejsce celu.", "info");
@@ -91,16 +94,16 @@ export async function startTask(mode, ctx, opts = {}) {
         view.body.append(we, ww, sb, ok);
       }
       if (onDown) addEventListener("pointerdown", onDown, true);
-      function cleanup() { if (onDown) removeEventListener("pointerdown", onDown, true); ui.clearMenu(); ui.hideRing(); demo.highlight(null); ui.hideNotes(); }
+      function cleanup() { if (onDown) removeEventListener("pointerdown", onDown, true); ui.clearMenu(); ui.hideCenter(); ui.hideRing(); demo.highlight(null); ui.hideNotes(); }
     });
   }
   function hint(st) {
-    if (st.kind === "action") demo.highlight(st.target);
+    if (st.kind === "action" && !st.anywhere) demo.highlight(st.target);
     if (st.kind === "mark") { const t = demo.cardTargetPx(c); if (t) ui.ring(t.x + 6, t.y - 4, 26); }
     if (st.kind === "dial") { const d = tableDope(c, tab); ui.notes(tab); }
   }
   const correctText = st => {
-    if (st.kind === "action") return `${demo.nameOf(st.target)} → ${st.action}`;
+    if (st.kind === "action") return st.anywhere ? st.action : `${demo.nameOf(st.target)} → ${st.action}`;
     if (st.kind === "choice") return resolve(st.correct, c);
     if (st.kind === "number") { const a = resolve(st.answer, c); return `${st.unit === "m" ? Math.round(a) : f1(a)} ${st.unit}`; }
     if (st.kind === "mark") return `cel na łuku ${c.range} m, w osi sektora`;

@@ -25,6 +25,8 @@ const CSS = `
   font: 14px/1.45 system-ui; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
 #tkNotes table { border-collapse: collapse; } #tkNotes td, #tkNotes th { padding: 1px 9px; text-align: right; } #tkNotes th { font-size: 12px; color: #555; }
 #tkNotes .t { font-weight: 700; margin-bottom: 4px; }
+#tkCenter { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 118; pointer-events: none; background: rgba(12,14,16,.85);
+  color: #ffd84d; font: 600 22px/1.35 system-ui; padding: 14px 26px; border-radius: 10px; text-align: center; box-shadow: 0 4px 18px rgba(0,0,0,.45); }
 #tkRing { position: fixed; z-index: 125; pointer-events: none; border: 3px solid #ffd84d; border-radius: 50%; box-shadow: 0 0 12px #ffd84d; }
 #tkModal { position: fixed; inset: 0; z-index: 160; background: rgba(0,0,0,.55); display: grid; place-items: center; font: 15px/1.45 system-ui; }
 #tkModal .box { background: #15181b; color: #eee; border-radius: 10px; padding: 20px 24px; width: min(860px, calc(100vw - 32px)); max-height: 86vh; overflow: auto; }
@@ -73,6 +75,9 @@ export function makeUi() {
     },
     clearMenu,
     ring(x, y, r) { if (!ring) { ring = el("div"); ring.id = "tkRing"; document.body.append(ring); } Object.assign(ring.style, { left: x - r + "px", top: y - r + "px", width: 2 * r + "px", height: 2 * r + "px", display: "block" }); },
+    // a hint in the middle of the screen; clicks go through it to the scene
+    center(text) { let c = document.getElementById("tkCenter"); if (!c) { c = el("div"); c.id = "tkCenter"; document.body.append(c); } c.textContent = text; },
+    hideCenter() { document.getElementById("tkCenter")?.remove(); },
     hideRing() { if (ring) ring.style.display = "none"; },
     // the shooter's notebook: ballistic table and wind table every 100 m (tab.table rows: [m, elev mrad, wind mrad per m/s])
     notes(tab) {
@@ -85,7 +90,7 @@ export function makeUi() {
     },
     clock() { const k = el("div"); k.id = "tkClock"; k.style.cssText = "position:fixed;right:64px;top:14px;z-index:121;background:rgba(12,14,16,.9);color:#f2c94c;font:700 18px monospace;padding:6px 12px;border-radius:6px"; document.body.append(k); return k; },
     hideNotes() { if (notes) notes.style.display = "none"; },
-    destroy() { document.getElementById("tkClock")?.remove(); bar.remove(); clearMenu(); ring && ring.remove(); notes && notes.remove(); document.getElementById("tkModal")?.remove(); },
+    destroy() { document.getElementById("tkClock")?.remove(); document.getElementById("tkCenter")?.remove(); bar.remove(); clearMenu(); ring && ring.remove(); notes && notes.remove(); document.getElementById("tkModal")?.remove(); },
   };
   return api;
 }

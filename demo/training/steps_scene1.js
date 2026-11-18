@@ -6,9 +6,9 @@
 const fromText = c => c.windFrom === 9 ? "Z godziny 9, czyli z lewej" : "Z godziny 3, czyli z prawej";
 
 export const STEPS = [
-  { id: "ears", chapter: 1, kind: "action", target: "ear_defenders", hold: { key: "s01.intro", u: 0.3 }, action: "Załóż ochronniki słuchu",
+  { id: "ears", chapter: 1, kind: "action", anywhere: true, target: "ear_defenders", hold: { key: "s01.intro", u: 0.3 }, action: "Załóż ochronniki słuchu",
     ask: "Przygotuj się do wyjścia na linię: zadbaj o słuch.", play: ["s01.cmd", "s01.intro", "s01.carry", "s01.ears"],
-    hint: "Ochronniki aktywne tłumią huk, ale przepuszczają mowę. Kliknij ochronniki na głowie strzelca." },
+    hint: "Ochronniki aktywne tłumią huk, ale przepuszczają mowę. Kliknij gdziekolwiek i wybierz z menu czynność, która chroni słuch." },
   { id: "load", chapter: 2, kind: "action", target: "magazine_hand", hold: { key: "s02.load", u: 0.05 }, action: "Załaduj trzy naboje do magazynka",
     ask: "Komenda: „Trzema – magazynki ładuj!”.", play: ["s02.cmd", "s02.load"],
     hint: "Wciskasz naboje kolejno do magazynka, każdy do końca. Kliknij magazynek." },
