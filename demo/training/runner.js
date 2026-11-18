@@ -7,7 +7,7 @@ const V_ = new URL(import.meta.url).search;
 const [{ STEPS, ACTION_POOL }, { resolve, checkAction, checkMark, checkNumber, checkChoice, choiceOptions, optionsFor, scoreExam, parseNumber },
   { rollConditions, VIEW_CONDITIONS, tableDope }, { makeUi, f1 }] = await Promise.all(["steps_scene1", "check", "conditions", "ui"].map(n => import(`./${n}.js${V_}`)));
 
-const EXAM_MS = 15 * 60 * 1000, PASS = 80;
+const EXAM_MS = 45 * 60 * 1000, PASS = 80;   // author, 18 XI: 45 min for the whole exam, animations included
 const firstSentence = t => (t.match(/^.*?[.!?](\s|$)/) || [t])[0].trim();
 const fmtTime = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 
@@ -37,11 +37,11 @@ export async function startTask(mode, ctx, opts = {}) {
 
   let stopped = false, cancelAsk = null, timedOut = false;
   const answers = new Map(), log = new Map(); let shots = 0;
-  // the exam clock runs only while a question waits: the shooter's animations do not count (review, 18 XI)
+  // the exam clock runs all the time, the shooter's animations included (about 11 min of the 45)
   let deadline = performance.now() + (window.__examMs ?? EXAM_MS), animT0 = null;
   const clock = exam ? ui.clock() : null;
   let timerEl = null; tick = setInterval(() => {
-    if (!exam || animT0 != null) return; const left = deadline - performance.now(); clock.textContent = "⏱ " + fmtTime(left);
+    if (!exam) return; const left = deadline - performance.now(); clock.textContent = "⏱ " + fmtTime(left);
     if (left <= 0 && !timedOut) { timedOut = true; tl.cancelRange(); cancelAsk && cancelAsk(); } }, 250);
   const quit = () => { stopped = true; tl.cancelRange(); cancelAsk && cancelAsk(); };
 
@@ -120,7 +120,7 @@ export async function startTask(mode, ctx, opts = {}) {
     if (!a) break;
     if (!answers.has(st.id)) { answers.set(st.id, a.ok); log.set(st.id, a.given); }
     if (a.dial) demo.setDial(a.dial);
-    animT0 = performance.now(); await tl.playRange(st.play[0], st.play[st.play.length - 1]); deadline += performance.now() - animT0; animT0 = null;
+    animT0 = performance.now(); await tl.playRange(st.play[0], st.play[st.play.length - 1]); animT0 = null;
     if (stopped || timedOut) break;
     if (st.id === "shot") { shots++;
       if (!demo.shotResult(0).hit && dialIdx >= 0) {
