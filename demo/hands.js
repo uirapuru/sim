@@ -100,6 +100,22 @@ export function makeGloves(THREE, soldier, gltfScene, { clone } = {}) {
   scene.add(root); root.updateMatrixWorld(true);
   root.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = true;
     if (/anatomy/.test(o.name)) o.material = new THREE.MeshStandardMaterial({ color: 0xc69a7c, roughness: 0.55 }); } });   // bare fingertip
+  // the bought rig gives the glove's index finger near the cut some weight on the middle finger, so with the middle
+  // finger round the grip the glove end left the bare fingertip (author, 18 XI): glove vertices of the index finger
+  // close to the fingertip take the weights of the nearest fingertip vertex and move with it
+  { let tip = null; const gl = []; root.traverse(o => { if (o.isSkinnedMesh) (/anatomy/.test(o.name) ? tip = o : gl.push(o)); });
+    if (tip) { const ta = tip.geometry.attributes, tp = ta.position, v = V(), w = V();
+      tip.geometry.computeBoundingBox(); const tb = tip.geometry.boundingBox, reach = tb.getSize(V()).length() * 0.15;
+      for (const g of gl) { const map = tip.skeleton.bones.map(b => g.skeleton.bones.indexOf(b)); if (map.some(i => i < 0)) continue;   // same bones, maybe another order
+        const ga = g.geometry.attributes, idx = new Set(g.skeleton.bones.map((b, i) => /index/.test(b.name) ? i : -1).filter(i => i >= 0));
+        const box = tb.clone().expandByScalar(reach);
+        for (let i = 0; i < ga.position.count; i++) { v.fromBufferAttribute(ga.position, i); if (!box.containsPoint(v)) continue;
+          let wi = 0; for (let k = 0; k < 4; k++) if (idx.has(ga.skinIndex.getComponent(i, k))) wi += ga.skinWeight.getComponent(i, k);
+          if (wi < 0.5) continue;                                     // the middle finger's own glove stays as it is
+          let best = -1, bd = Infinity; for (let j = 0; j < tp.count; j++) { const d = w.fromBufferAttribute(tp, j).distanceToSquared(v); if (d < bd) { bd = d; best = j; } }
+          if (Math.sqrt(bd) > reach) continue;
+          for (let k = 0; k < 4; k++) { ga.skinIndex.setComponent(i, k, map[ta.skinIndex.getComponent(best, k)]); ga.skinWeight.setComponent(i, k, ta.skinWeight.getComponent(best, k)); } }
+        ga.skinIndex.needsUpdate = ga.skinWeight.needsUpdate = true; } } }
   const find = n => { let b = null; root.traverse(o => { if (!b && o.name.replace(/[.\s_]/g, "") === n.replace(/[.\s_]/g, "")) b = o; }); return b; };
   const hands = {};
   for (const side of ["R", "L"]) {
