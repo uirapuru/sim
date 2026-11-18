@@ -893,12 +893,14 @@ export async function play(ctx) {
       const thumbPose = key === "grip" ? { thumbA: TR.map((v, i) => v + (TL[i] - v) * tk + (i === 1 ? 0.15 * (S.rifle.selK ?? 0) * tk : 0)), thumbUp: TRU + (TLU - TRU) * tk } : {};
       const fp_ = (window.__hk && window.__hk.key === key ? window.__hk.fingers : FINGER_POSE[key]) || {};
       handsMan.update({ R: { curl: key === "chamber" ? 0.75 : hold ?? (h ? S.man.curl.R : 0.25), index, thumb: key === "grip" ? 0.6 : null, ...gripIdx, ...thumbPose, ...fp_ },
-                        L: kesPinch() ? { curl: 0.35, indexA: [0.55, 0.7, 0.35], thumbA: [0.45, 0.35, 0.25], thumbUp: 0.25 } : { curl: S.man.L ? (/kestrel/.test(typeof S.man.L === "string" ? S.man.L : S.man.L.to || "") ? 0.7 : S.man.L === "bag" ? 0.75 : S.man.L === "handguard" ? 0.6 : 0.55) : 0.25 } }); 
+                        L: kesPinch() ? { curl: window.__kc ?? 0.75, thumbA: window.__kt ?? [0.3, 0.45, 0.35], thumbUp: window.__ku ?? 0.45 } : { curl: S.man.L ? (/kestrel/.test(typeof S.man.L === "string" ? S.man.L : S.man.L.to || "") ? 0.7 : S.man.L === "bag" ? 0.75 : S.man.L === "handguard" ? 0.6 : 0.55) : 0.25 } }); 
     if (kestrel.visible && S.props.kestrel !== "ground") {   // after the hands are posed this frame
       // held from below in the fingertips, the whole device above the hand (author, 18 XI)
       const hb = man.rig.B.LeftHand, hq = hb.getWorldQuaternion(new THREE.Quaternion()), hy = V(0, 1, 0).applyQuaternion(hq).normalize();
       const hh = handsMan.hands.L, tipW = bn => bn.localToWorld(V(0, bn.children[0]?.position.length() || 0.02, 0));
-      const pinch = tipW(hh.fing.index[2]).lerp(tipW(hh.fing.thumb[2]), 0.5), kp = pinch.addScaledVector(hy, 0.052); kestrel.position.copy(kp);   // lower end in the pinch
+      // gripped by its sides (author, 18 XI): thumb on one edge, the fingers on the other, the body in front of the palm
+      const tT = tipW(hh.fing.thumb[2]), tM = tipW(hh.fing.middle[2]), toF = man.rig.B.Head.getWorldPosition(V()).sub(tT).setY(0).normalize();
+      const kp = tT.clone().lerp(tM, 0.5).addScaledVector(toF, window.__kf ?? 0.004).addScaledVector(hy, window.__kY ?? 0.035); kestrel.position.copy(kp);
       // the display (+Z of the model) always turned to the shooter's face (author, 18 XI)
       const dz = man.rig.B.Head.getWorldPosition(V()).sub(kp), zz = dz.addScaledVector(hy, -dz.dot(hy)).normalize(), xx = hy.clone().cross(zz).normalize();
       kestrel.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xx, hy, zz)); impeller.rotation.x = S.props.spin || 0; }
