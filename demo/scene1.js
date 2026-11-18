@@ -45,7 +45,7 @@ export async function play(ctx) {
 
   // ---------- gong: red torso 0.5 x 1.0 m on chains in a frame ----------
   const gongBase = W(RANGE, 0);
-  const gong = new THREE.Group(); gong.position.copy(gongBase); gong.rotation.y = yawOf(fwd.clone().negate()); scene.add(gong);
+  const gong = new THREE.Group(); gong.name = "gong"; gong.position.copy(gongBase); gong.rotation.y = yawOf(fwd.clone().negate()); scene.add(gong);
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x3b3a36, roughness: 0.8, metalness: 0.3 });
   for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.0, 0.06), frameMat); p.position.set(s * 0.55, 1.0, 0); p.castShadow = true; gong.add(p); }
   const bar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.06, 0.06), frameMat); bar.position.y = 2.0; gong.add(bar);
@@ -153,8 +153,8 @@ export async function play(ctx) {
   const KN = { elev: node("scope_elevation"), wind: node("scope_windage"), plx: node("scope_parallax") };
   const knRest = Object.fromEntries(Object.entries(KN).map(([k, o]) => [k, o ? o.quaternion.clone() : null]));
   // turret scales read at the index (author, 18 XI): from the engraved mesh itself (uv u = angle) find how u maps to the
-  // angle about the knob axis, then turn the knob so the set value sits at the index mark. Elevation 12 mrad per turn
-  // (white 0-11, yellow 12-23), windage 0 on top with R clockwise, parallax 50 m - inf; index: yellow mark / top.
+  // angle about the knob axis, then turn the knob so the set value sits at the index mark. Elevation and windage 10 mrad per turn
+  // (white 0-9, yellow 10-19), windage 0 on top with R clockwise, parallax 50 m - inf; index: yellow mark / top.
   const scaleFit = (knob, axis) => { let sx = 0, sy = 0, tx = 0, ty = 0, n = 0;
     const ang = p => axis === "Y" ? Math.atan2(p.x, p.z) : Math.atan2(p.z, p.y);
     knob.traverse(o => { if (!o.isMesh || !/_scale$/.test(o.material.name || "")) return; const P = o.geometry.attributes.position, U = o.geometry.attributes.uv; if (!U) return;
@@ -169,8 +169,8 @@ export async function play(ctx) {
     return p ? SCF.elev.ang(KN.elev.worldToLocal(p)) : Math.PI; })();
   const PLX = [50, 70, 100, 150, 200, 300, 500, 1000, 3000];
   const dialAngle = (key, S) => { const f = SCF[key]; if (!f || !f.n) return 0; let u, th;
-    if (key === "elev") { u = (S.rifle.elev * 10 + 0.5) / 120; th = idxElev; }
-    else if (key === "wind") { u = (-S.rifle.wind * 10 + 0.5) / 120; th = 0; }                // wind > 0 = left
+    if (key === "elev") { u = (S.rifle.elev * 10 + 0.5) / 100; th = idxElev; }   // 10 mrad = 100 clicks per turn
+    else if (key === "wind") { u = (-S.rifle.wind * 10 + 0.5) / 100; th = 0; }                // wind > 0 = left
     else { const dd = Math.max(50, Math.min(3000, S.rifle.parallax)); let i = 0; while (i < PLX.length - 2 && dd > PLX[i + 1]) i++;
       const k = Math.log(dd / PLX[i]) / Math.log(PLX[i + 1] / PLX[i]); u = ((i + k) * 10 + 0.5) / 90; th = 0; }
     const thT = (u * 2 * Math.PI - f.d) / f.c; return th - thT; };
@@ -215,7 +215,7 @@ export async function play(ctx) {
   // rear bag: flat sand-filled pillow ~20 x 13 x 6 cm in woodland camouflage, with a carry loop; lies flat under the
   // butt, or on its side when the butt sits higher than the flat bag
   const bagTop = RL(V(0, -0.118, -0.075)), bagH = Math.max(0.05, bagTop.y - hAt(bagTop.x, bagTop.z));
-  const bag = makeBag(THREE, bagH); bag.position.set(bagTop.x, bagTop.y - bagH, bagTop.z); bag.rotation.y = yawOf(fwd); scene.add(bag);
+  const bag = makeBag(THREE, bagH); bag.name = "bag"; bag.position.set(bagTop.x, bagTop.y - bagH, bagTop.z); bag.rotation.y = yawOf(fwd); scene.add(bag);
   // sling strap (only while carried)
   const strapMat = new THREE.MeshStandardMaterial({ color: 0x3d3a2a, roughness: 0.9 }); let strap = null;
 
@@ -226,7 +226,7 @@ export async function play(ctx) {
   // Kestrel 5700: body, screen, impeller cage on top with a vane wheel that spins in the wind
   // Kestrel 5700 Elite (props.js), impeller cover open; the impeller spins about the axis through the head
   // Kestrel 5700 (bought model, impeller cover swung open); the glTF has the display along +x, turned so it faces +z
-  const kestrel = new THREE.Group(), impeller = kesG.scene.getObjectByName("kestrel5700x_fan");
+  const kestrel = new THREE.Group(); kestrel.name = "kestrel5700x"; const impeller = kesG.scene.getObjectByName("kestrel5700x_fan");
   kesG.scene.rotation.y = -Math.PI / 2; kestrel.add(kesG.scene); scene.add(kestrel);
   kesG.scene.traverse(o => { if (o.isMesh) { o.castShadow = true;
     if (o.material.name === "kestrel5700x_lcd") {                 // the readout on the display
@@ -382,7 +382,7 @@ export async function play(ctx) {
   const card = (x, y, w, inner, extra = "") => [inner, `left:${x};top:${y};width:${w};background:#f4f1e8;color:#1d2a40;border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.5);padding:14px 18px;font:20px/1.45 'Segoe Print','Bradley Hand','Comic Sans MS',cursive;${extra}`];
   const reveal = (lines, u) => lines.slice(0, Math.ceil(lines.length * Math.min(1, u * 1.15) - 1e-6)).join("<br>");
   const dial = (title, value, lo, hi, unit) => {             // turret dial seen from above: index line + rotating scale
-    // hi = mrad per turn (PM II: 12, 120 clicks); a windage dial (lo < 0) counts R clockwise and L anticlockwise from 0
+    // hi = mrad per turn (PM II: 10, 100 clicks of 0.1 mrad); a windage dial (lo < 0) counts R clockwise and L anticlockwise from 0
     const N = hi * 10, step = 360 / N, turns = value / hi, a = -turns * 360, ticks = [];
     for (let k = 0; k < N; k++) { const r1 = 92, r2 = k % 10 === 0 ? 72 : k % 5 === 0 ? 78 : 84, an = (k * step + a) * Math.PI / 180;
       ticks.push(`<line x1="${110 + r1 * Math.sin(an)}" y1="${110 - r1 * Math.cos(an)}" x2="${110 + r2 * Math.sin(an)}" y2="${110 - r2 * Math.cos(an)}" stroke="#ddd" stroke-width="${k % 10 ? 1 : 2.4}"/>`);
@@ -458,9 +458,9 @@ export async function play(ctx) {
   const capsOff = S => { kneelWork(S); S.rifle.boltOpen = true; S.rifle.capF = S.rifle.capR = "ground"; };
   B(5, "s05.turrets", (S, u) => { capsOff(S); S.man.R = "elev"; S.cam = { kind: "rifle", pos: [0.46, 0.16, -0.50], look: [0, 0.11, -0.41], near: true, fov: 40 }; });
   B(5, "s05.elev", (S, u) => { capsOff(S); S.man.R = "elev"; S.rifle.elev = lerp(0.8, 0, ease(seg(u, 0.35, 0.8)));
-    S.cam = { kind: "rifle", pos: [0.06, 0.24, -0.62], look: [0, 0.12, -0.41], near: true, fov: 34 }; S.ov.dial = turretDialAt("6%", "18%", "Bęben wysokości", S.rifle.elev, 0, 12, "mrad"); });
+    S.cam = { kind: "rifle", pos: [0.06, 0.24, -0.62], look: [0, 0.12, -0.41], near: true, fov: 34 }; S.ov.dial = turretDialAt("6%", "18%", "Bęben wysokości", S.rifle.elev, 0, 10, "mrad"); });
   B(5, "s05.wind", (S, u) => { capsOff(S); S.rifle.elev = 0; S.man.R = "windage"; S.rifle.wind = lerp(-0.2, 0, ease(seg(u, 0.3, 0.7)));
-    S.cam = { kind: "rifle", pos: [0.16, 0.13, -0.62], look: [0.03, 0.088, -0.41], near: true, fov: 34 }; S.ov.dial = turretDialAt("6%", "18%", "Bęben poprawek bocznych", -S.rifle.wind, -6, 12, "mrad"); });
+    S.cam = { kind: "rifle", pos: [0.16, 0.13, -0.62], look: [0.03, 0.088, -0.41], near: true, fov: 34 }; S.ov.dial = turretDialAt("6%", "18%", "Bęben poprawek bocznych", -S.rifle.wind, -5, 10, "mrad"); });
   // 6 prone behind the rifle (still unloaded, action open)
   const ready = S => { onGround(S); S.rifle.boltOpen = true; S.rifle.capF = S.rifle.capR = "ground"; S.rifle.elev = 0; S.rifle.wind = 0; };
   B(6, "s06.prone", (S, u) => { ready(S); const k = ease(u); S.man.at = KNEEL.clone().lerp(PRONE, k); S.man.yaw = lerp(KNEEL_YAW, yawFwd, k);
@@ -533,9 +533,9 @@ export async function play(ctx) {
   B(13, "s13.parallax", (S, u) => { prone(S); S.man.L = "parallax"; S.rifle.parallax = lerp(300, 600, ease(seg(u, 0.1, 0.6)));
     scopeCam(S, { mag: 12, blur: Math.abs(S.rifle.parallax - 600) / 120, wobble: u > 0.65 ? Math.sin((u - 0.65) * 40) * 0.25 : 0 }); });
   B(13, "s13.elev", (S, u) => { prone(S); S.rifle.parallax = 600; S.man.R = "elev"; S.rifle.elev = lerp(0, ELEV, ease(seg(u, 0.15, 0.8))); S.cam = { kind: "rifle", pos: [0.05, 0.42, -0.36], look: [0, 0.13, -0.405] };
-    S.ov.dial = turretDialAt("6%", "18%", "Bęben wysokości (↑)", S.rifle.elev, 0, 12, "mrad"); });
+    S.ov.dial = turretDialAt("6%", "18%", "Bęben wysokości (↑)", S.rifle.elev, 0, 10, "mrad"); });
   B(13, "s13.wind", (S, u) => { prone(S); S.rifle.parallax = 600; S.rifle.elev = ELEV; S.man.R = "windage"; S.rifle.wind = lerp(0, WIND, ease(seg(u, 0.1, 0.55))); S.cam = u < 0.6 ? { kind: "rifle", pos: [0.32, 0.2, -0.3], look: [0.03, 0.086, -0.405] } : null;
-    if (u < 0.6) S.ov.dial = turretDialAt("6%", "18%", "Bęben poprawek bocznych", -S.rifle.wind, -6, 12, "mrad"); else scopeCam(S, { mag: 12 }); });
+    if (u < 0.6) S.ov.dial = turretDialAt("6%", "18%", "Bęben poprawek bocznych", -S.rifle.wind, -5, 10, "mrad"); else scopeCam(S, { mag: 12 }); });
   const dialled = S => { prone(S); S.rifle.elev = ELEV; S.rifle.wind = WIND; S.rifle.parallax = 600; };
   // 14 "Ognia!": safety off
   cmd(14, "s14.cmd", S => dialled(S));
@@ -657,8 +657,26 @@ export async function play(ctx) {
   const impact = n => { const p = pathAt(RANGE, n), loc = pivot.worldToLocal(p.clone()); return [-loc.x, loc.y - (-0.82)]; };   // plate coords (x right from the shooter's view, y up)
 
   // ---------- render one evaluated state ----------
-  const panel = makePanel(tl, { title: TITLE, onToggleLabels: on => { labelsOn = on; }, onCamMode: m => { freeCam = m === "free"; fpp = m === "fpp"; controls.enabled = freeCam; if (freeCam) { controls.target.copy(man.m.position).add(V(0, 0.6, 0)); } } });
+  const panel = makePanel(tl, { title: TITLE, onToggleLabels: on => { labelsOn = on; if (!on) { tip.style.display = "none"; ctx.renderer.domElement.style.cursor = ""; } }, onCamMode: m => { freeCam = m === "free"; fpp = m === "fpp"; controls.enabled = freeCam; if (freeCam) { controls.target.copy(man.m.position).add(V(0, 0.6, 0)); } } });
   let labelsOn = false, freeCam = false, fpp = false;
+  // labels (author, 18 XI): with "Etykiety" on, hovering any part of the rifle shows its name (white on black)
+  const PARTS = await fetch("models/grot_parts.json?v=" + Date.now()).then(r => r.json()).then(j => Object.fromEntries(j.parts.map(p => [p.id, p]))).catch(() => ({}));
+  PARTS.suppressor = { pl: "Tłumik dźwięku", en: "Suppressor" };
+  const EXTRA = { kestrel5700x: "Kestrel 5700 Elite – miernik wiatru i warunków", gong: "Gong 0,5 × 1,0 m (sylwetka)", bag: "Worek strzelecki pod kolbę" };
+  const tip = document.createElement("div"); tip.id = "partLabel"; tip.style.cssText = "position:fixed;z-index:75;pointer-events:none;display:none;background:#000;color:#fff;padding:5px 9px;border-radius:4px;font:600 15px system-ui;white-space:nowrap";
+  document.body.append(tip);
+  const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(); let mouseIn = false, mx = 0, my = 0;
+  const cvEl = ctx.renderer.domElement;
+  cvEl.addEventListener("pointermove", e => { mouseIn = true; mx = e.clientX; my = e.clientY; });
+  cvEl.addEventListener("pointerleave", () => { mouseIn = false; tip.style.display = "none"; });
+  const partOf = o => { for (let n = o; n; n = n.parent) { if (PARTS[n.name]) return PARTS[n.name].pl; if (EXTRA[n.name]) return EXTRA[n.name]; if (n === rifle || n === scene) break; } return null; };
+  function updateLabel() {
+    if (!labelsOn || !mouseIn) { tip.style.display = "none"; return; }
+    mouse.set(mx / innerWidth * 2 - 1, -(my / innerHeight) * 2 + 1); ray.setFromCamera(mouse, camera);
+    const hits = ray.intersectObjects([rifle, kestrel, gong, bag], true).filter(h => h.object.visible);
+    const name = hits.length ? partOf(hits[0].object) : null;
+    if (!name) { tip.style.display = "none"; cvEl.style.cursor = ""; return; }
+    tip.textContent = name; tip.style.left = (mx + 14) + "px"; tip.style.top = (my + 12) + "px"; tip.style.display = "block"; cvEl.style.cursor = "help"; }
   // first person (author, 18 XI): the camera in the shooter's eyes, turning smoothly to what he is doing; the script's
   // scope shots are kept, every other shot is replaced by the eye view
   const fppDir = V(0, 0, 1); let fppT = performance.now(), fppInit = false;
@@ -703,7 +721,7 @@ export async function play(ctx) {
     m.fragmentShader = src.replace(/float factor = \( focus \+ viewZ \);/, "float factor = min( max( focus, 50.0 ) + viewZ, 0.0 );"); m.needsUpdate = true;
     if (m.fragmentShader === src) console.warn("bokeh patch not applied"); }
   addEventListener("resize", () => composer.setSize(innerWidth, innerHeight));
-  window.__renderOverride = () => {                              // __dbgCam: test hook, a fixed camera for close-up checks
+  window.__renderOverride = () => { updateLabel();               // __dbgCam: test hook, a fixed camera for close-up checks
     const dc = window.__dbgCam; if (dc) { camera.position.copy(dc.p); camera.lookAt(dc.t); camera.fov = dc.fov || 40; camera.updateProjectionMatrix(); }
     const hide = dc && dc.noBody ? [] : null; if (hide) man.m.traverse(o => { if (o.isSkinnedMesh && o.visible) { o.visible = false; hide.push(o); } });
     composer.render(); if (hide) hide.forEach(o => o.visible = true); };

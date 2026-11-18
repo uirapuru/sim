@@ -1,0 +1,389 @@
+{
+ "model": "7,62 mm SpKW/Z (Grot 7,62N) 20\" (FB Radom)",
+ "length_mm": 1076,
+ "home": [
+  1.55,
+  0.35,
+  -0.2
+ ],
+ "parts": [
+  {
+   "id": "stock",
+   "pl": "Kolba wyborowa",
+   "en": "Precision stock",
+   "desc": "Zespół 1. Szkieletowa, składana na bok zawiasem przy komorze. Regulacja długości (dźwignia), wysokości podpoliczka (pokrętło) i wysokości trzewika. Pod spodem szyna na tylną podpórkę. Ustaw ją tak, żeby oko samo trafiało w oś lunety.",
+   "group": "furniture",
+   "assembly": 1,
+   "explode": [
+    0,
+    -0.14,
+    0.04
+   ]
+  },
+  {
+   "id": "butt_pad",
+   "pl": "Trzewik kolby (stopka)",
+   "en": "Butt pad",
+   "desc": "Gumowa, żebrowana stopka opiera się o bark. Wysokość trzewika zmienia się przyciskiem, co pozwala dopasować kolbę do postawy leżącej.",
+   "group": "furniture",
+   "assembly": 1,
+   "explode": [
+    0,
+    -0.24,
+    0.04
+   ]
+  },
+  {
+   "id": "cheek_rest",
+   "pl": "Podpoliczek",
+   "en": "Cheek rest",
+   "desc": "Policzek leży na nim zawsze w tym samym miejscu, co daje powtarzalne ułożenie oka za lunetą. Wysokość ustawia się pokrętłem na kolbie.",
+   "group": "furniture",
+   "assembly": 1,
+   "explode": [
+    0,
+    -0.12,
+    0.15
+   ]
+  },
+  {
+   "id": "upper_receiver",
+   "pl": "Komora zamkowa",
+   "en": "Upper receiver",
+   "desc": "Zespół 2. Płaszcz ze stopu lekkiego z szyną STANAG 4694 aż do połowy łoża, na której montuje się lunetę. W środku pracuje suwadło z zamkiem. Okno wyrzutowe po prawej, gniazda rączek napinacza po obu stronach.",
+   "group": "action",
+   "assembly": 2,
+   "explode": [
+    0,
+    0,
+    0.14
+   ]
+  },
+  {
+   "id": "dust_cover",
+   "pl": "Pokrywa okna wyrzutowego",
+   "en": "Ejection port cover",
+   "desc": "Zamyka okno wyrzutowe przed piaskiem i błotem. Otwiera się sama przy pierwszym strzale albo przeładowaniu.",
+   "group": "action",
+   "assembly": 2,
+   "explode": [
+    0.08,
+    0,
+    0.14
+   ]
+  },
+  {
+   "id": "charging_handle",
+   "pl": "Rączka napinacza",
+   "en": "Charging handle",
+   "desc": "Obustronna, niezależna od suwadła (nie wraca przy strzale). Służy do przeładowania i dosyłania zamka. Szerokość broni przez rączki: 86 mm.",
+   "group": "action",
+   "assembly": 2,
+   "explode": [
+    0.1,
+    0.02,
+    0.16
+   ]
+  },
+  {
+   "id": "rear_sight",
+   "pl": "Celownik składany (przeziernik)",
+   "en": "Folding rear sight",
+   "desc": "Zapasowy celownik mechaniczny. Na co dzień złożony pod lunetą, rozkładany gdy luneta zawiedzie. Pokrętło przestawia przeziernik w poziomie.",
+   "group": "sights",
+   "assembly": 2,
+   "explode": [
+    0,
+    -0.02,
+    0.24
+   ]
+  },
+  {
+   "id": "handguard",
+   "pl": "Łoże wyborowe długie",
+   "en": "Long precision handguard",
+   "desc": "Zespół 3. Nie dotyka lufy (lufa swobodna), więc chwyt i dwójnóg nie zmieniają punktu trafienia. Gniazda M-LOK na bokach i spodzie, krótkie szyny na dwójnóg i oporę dłoni, z przodu gniazda zaczepu pasa QD po obu stronach.",
+   "group": "furniture",
+   "assembly": 3,
+   "explode": [
+    0,
+    0.14,
+    0.14
+   ]
+  },
+  {
+   "id": "handguard_panels",
+   "pl": "Nakładki łoża M-LOK",
+   "en": "M-LOK panels",
+   "desc": "Osłony gniazd M-LOK z tworzywa, przykręcane po dwie do trzech sekcji. Chronią dłoń przed gorącym łożem i dają pewny chwyt.",
+   "group": "furniture",
+   "assembly": 3,
+   "explode": [
+    0.09,
+    0.14,
+    0.14
+   ]
+  },
+  {
+   "id": "hand_stop",
+   "pl": "Opora dłoni",
+   "en": "Hand stop",
+   "desc": "Wyczuwalny ogranicznik na spodzie łoża: dłoń wspiera broń zawsze w tym samym miejscu, także przy strzelaniu z podpórki.",
+   "group": "furniture",
+   "assembly": 3,
+   "explode": [
+    0,
+    0.14,
+    0.04
+   ]
+  },
+  {
+   "id": "front_sight",
+   "pl": "Muszka składana",
+   "en": "Folding front sight",
+   "desc": "Druga część zapasowego celownika mechanicznego. Złożona nie przeszkadza w patrzeniu przez lunetę.",
+   "group": "sights",
+   "assembly": 3,
+   "explode": [
+    0,
+    0.16,
+    0.24
+   ]
+  },
+  {
+   "id": "lower_receiver",
+   "pl": "Komora spustowa",
+   "en": "Trigger housing (lower)",
+   "desc": "Zespół 6. Mechanizm spustowy, gniazdo magazynka, zatrzask magazynka, dźwignia zaczepu suwadła i bezpiecznik. Łączy się z komorą zamkową dwoma sworzniami. Osłona spustu jest częścią korpusu.",
+   "group": "action",
+   "assembly": 6,
+   "explode": [
+    0,
+    0,
+    -0.13
+   ]
+  },
+  {
+   "id": "pistol_grip",
+   "pl": "Chwyt pistoletowy",
+   "en": "Pistol grip",
+   "desc": "Uchwyt ręki strzelającej z fakturą przeciwpoślizgową. Pewny, ale luźny chwyt: ściskanie przenosi drgania na broń.",
+   "group": "furniture",
+   "assembly": 6,
+   "explode": [
+    0,
+    -0.04,
+    -0.24
+   ]
+  },
+  {
+   "id": "magazine",
+   "pl": "Magazynek 10-nabojowy",
+   "en": "10-round magazine",
+   "desc": "Magazynek typu SR-25 (AR-10), 10 albo 20 nabojów. Wymieniany przyciskiem zatrzasku po obu stronach komory spustowej.",
+   "group": "action",
+   "assembly": 6,
+   "explode": [
+    0,
+    0.06,
+    -0.27
+   ]
+  },
+  {
+   "id": "trigger",
+   "pl": "Spust",
+   "en": "Trigger",
+   "desc": "Ściągaj płynnie i prosto do tyłu, opuszką palca. Nie szarp.",
+   "group": "action",
+   "assembly": 6,
+   "explode": [
+    0,
+    0,
+    -0.19
+   ]
+  },
+  {
+   "id": "safety_selector",
+   "pl": "Skrzydełko bezpiecznika",
+   "en": "Safety lever",
+   "desc": "Przełącznik rodzaju ognia i bezpiecznik. Położenie Z: zabezpieczony, P: ogień pojedynczy. Obustronne.",
+   "group": "action",
+   "assembly": 6,
+   "explode": [
+    0.09,
+    0,
+    -0.13
+   ]
+  },
+  {
+   "id": "magazine_release",
+   "pl": "Przycisk zatrzasku magazynka",
+   "en": "Magazine release",
+   "desc": "Zwalnia magazynek. Obustronny.",
+   "group": "action",
+   "assembly": 6,
+   "explode": [
+    0.09,
+    0.03,
+    -0.13
+   ]
+  },
+  {
+   "id": "barrel",
+   "pl": "Lufa 508 mm (20\")",
+   "en": "Barrel 508 mm",
+   "desc": "Zespół 7. Gwint 4 bruzdy, skok 254 mm (1:10\"). Żłobki na zewnątrz odchudzają lufę i przyspieszają jej stygnięcie. Wymienialna przez użytkownika. Większość lufy kryje się w łożu.",
+   "group": "barrel",
+   "assembly": 7,
+   "explode": [
+    0,
+    0.26,
+    0
+   ]
+  },
+  {
+   "id": "muzzle_brake",
+   "pl": "Hamulec wylotowy",
+   "en": "Muzzle brake",
+   "desc": "Gazy prochowe uderzają w przegrody i ciągną broń do przodu, zmniejszając odrzut i podrzut. Mocowany na gwincie, kontrowany pierścieniem.",
+   "group": "barrel",
+   "assembly": 7,
+   "explode": [
+    0,
+    0.36,
+    0
+   ]
+  },
+  {
+   "id": "scope_mount",
+   "pl": "Montaż lunety 34 mm",
+   "en": "34 mm scope mount",
+   "desc": "Jednoczęściowy montaż na szynie komory zamkowej. Trzyma lunetę wysoko nad osią lufy, żeby oko leżało w osi lunety przy głowie opartej o podpoliczek. Raz ustawionego nie zdejmuje się bez potrzeby: każde przełożenie wymaga ponownego przystrzelania.",
+   "group": "sights",
+   "assembly": 0,
+   "explode": [
+    0,
+    0,
+    0.34
+   ]
+  },
+  {
+   "id": "scope_elevation",
+   "pl": "Bęben wysokości",
+   "en": "Elevation turret",
+   "desc": "Górny bęben lunety. Jeden klik to 0,1 miliradiana, pełny obrót to 10 miliradianów. Obrót w lewo (UP) podnosi punkt trafienia.",
+   "group": "sights",
+   "assembly": 0,
+   "explode": [
+    0,
+    0,
+    0.56
+   ]
+  },
+  {
+   "id": "scope_parallax",
+   "pl": "Pokrętło paralaksy",
+   "en": "Parallax knob",
+   "desc": "Pokrętło z lewej strony lunety. Ustawia ostrość na odległość celu, żeby siatka nie przesuwała się po celu przy ruchu głowy.",
+   "group": "sights",
+   "assembly": 0,
+   "explode": [
+    -0.08,
+    0,
+    0.46
+   ]
+  },
+  {
+   "id": "scope_windage",
+   "pl": "Bęben poprawek bocznych",
+   "en": "Windage turret",
+   "desc": "Bęben z prawej strony lunety. Jeden klik to 0,1 miliradiana w lewo albo w prawo. Na nim wprowadza się poprawkę na wiatr.",
+   "group": "sights",
+   "assembly": 0,
+   "explode": [
+    0.08,
+    0,
+    0.46
+   ]
+  },
+  {
+   "id": "scope",
+   "pl": "Luneta S&B PM II 3-12x50",
+   "en": "S&B PM II 3-12x50 riflescope",
+   "desc": "Luneta strzelca wyborowego: powiększenie 3-12 razy, tubus 34 mm, obiektyw 50 mm. Pierścienie montażu obejmują tubus przed siodłem i za nim. Budowę lunety część po części pokazuje osobny model „Luneta S&B PM II”.",
+   "group": "sights",
+   "assembly": 0,
+   "explode": [
+    0,
+    0,
+    0.46
+   ]
+  },
+  {
+   "id": "bolt_carrier",
+   "pl": "Suwadło z zamkiem",
+   "en": "Bolt carrier with bolt",
+   "desc": "Zespół 5. Zamek obrotowy rygluje lufę. Przestawienie zamka o 180° zmienia stronę wyrzutu łusek.",
+   "group": "action",
+   "assembly": 5,
+   "explode": [
+    0,
+    0.0,
+    0.29
+   ]
+  },
+  {
+   "id": "recoil_mechanism",
+   "pl": "Mechanizm powrotny",
+   "en": "Recoil mechanism",
+   "desc": "Zespół 4. Sprężyna z prowadnicą i buforem; po strzale zawraca suwadło do przodu.",
+   "group": "action",
+   "assembly": 4,
+   "explode": [
+    0,
+    -0.06,
+    0.36
+   ]
+  },
+  {
+   "id": "gas_piston",
+   "pl": "Tłok gazowy",
+   "en": "Gas piston",
+   "desc": "Gazy pobrane z lufy pchają tłok, a ten suwadło (krótki skok tłoka). Regulator gazowy: 1 normalnie, 2 trudne warunki, T z tłumikiem.",
+   "group": "action",
+   "assembly": 7,
+   "explode": [
+    0,
+    0.2,
+    0.26
+   ]
+  },
+  {
+   "id": "bipod_folded",
+   "pl": "Dwójnóg",
+   "en": "Bipod",
+   "desc": "Podpiera przód broni na szynie pod łożem. Nogi teleskopowe z pierścieniem blokady i gumowymi stopkami. W marszu złożone do przodu wzdłuż lufy; przed strzelaniem rozkładane w dół i wysuwane na wysokość, przy której oko leży swobodnie za lunetą.",
+   "group": "furniture",
+   "assembly": 0,
+   "explode": [
+    0,
+    0.16,
+    -0.16
+   ]
+  },
+  {
+   "id": "bipod_deployed",
+   "pl": "Dwójnóg (rozłożony)",
+   "en": "Bipod (deployed)",
+   "desc": "Nogi rozłożone w dół i wysunięte. Broń leży na dwójnogu z przodu i na dłoni albo tylnej podpórce z tyłu.",
+   "group": "furniture",
+   "assembly": 0,
+   "alt_of": "bipod_folded",
+   "explode": [
+    0,
+    0.16,
+    -0.16
+   ]
+  }
+ ]
+}
