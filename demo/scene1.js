@@ -231,7 +231,7 @@ export async function play(ctx) {
 
   // ---------- fence: the buildings are separated from the range by a ~2 m wire-mesh fence on a low concrete base
   // (author, 18 XI); line traced on the orthophoto, world x/z ----------
-  { const FENCE = [[388, 1855], [396, 1864], [399, 1887], [421, 1891], [440, 1899], [468, 1940], [480, 1985]].map(([x, z]) => V(x, 0, z));   // behind the stand (photo 1 II 2026)
+  { const FENCE = [[397, 1890], [392, 1853], [403, 1846], [441, 1899], [468, 1940], [480, 1985]].map(([x, z]) => V(x, 0, z));   // straight to the road, along the road, down the side of the stand (orthophoto; author 18 XI)
     const meshTex = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d");
       // galvanized chain-link: square ~5 cm meshes set at 45 degrees, so they read as diamonds (author, 18 XI)
       x.strokeStyle = "rgba(176,180,178,1)"; x.lineWidth = 3; x.beginPath(); x.moveTo(0, 0); x.lineTo(64, 64); x.moveTo(64, 0); x.lineTo(0, 64); x.stroke();
@@ -253,8 +253,8 @@ export async function play(ctx) {
       const end = FENCE[FENCE.length - 1]; if (i === FENCE.length - 2) { const post = new THREE.Mesh(postG, postM); post.position.set(end.x, hAt(end.x, end.z) + 1.1, end.z); fence.add(post); }
     }
     // small shelter with a table for the ammunition NCO, on the range side of the fence level with the stand (author, 18 XI)
-    { const sh = new THREE.Group(), at = (() => { const a = FENCE[2], b = FENCE[3], d = b.clone().sub(a).normalize(), n = V(-d.z, 0, d.x);   // 2 m clear of the fence (author, 18 XI)
-        const p = a.clone().lerp(b, 0.9); if (n.z > 0) n.negate(); return p.addScaledVector(n, 2.0 + 1.35); })(),
+    { const sh = new THREE.Group(), at = (() => { const a = FENCE[2], b = FENCE[3], d = b.clone().sub(a).normalize(), n = V(d.z, 0, -d.x);   // range side, 2 m clear of the fence (author, 18 XI)
+        if (n.x < 0) n.negate(); const p = a.clone().lerp(b, (1878 - a.z) / (b.z - a.z)); return p.addScaledVector(n, 2.0 + 1.35); })(),   // level with the stand
         yaw = Math.atan2(FENCE[3].x - FENCE[2].x, FENCE[3].z - FENCE[2].z) + Math.PI / 2, wood = new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 0.85 });
       const roofM = new THREE.MeshStandardMaterial({ color: 0x55605a, metalness: 0.4, roughness: 0.6, side: THREE.DoubleSide });
       for (const [x, z, h] of [[-1.5, -1.1, 2.5], [1.5, -1.1, 2.5], [-1.5, 1.1, 2.2], [1.5, 1.1, 2.2]]) { const pst = new THREE.Mesh(new THREE.BoxGeometry(0.1, h, 0.1), postM); pst.position.set(x, h / 2, z); sh.add(pst); }
@@ -474,11 +474,12 @@ export async function play(ctx) {
     <div style="display:flex;justify-content:space-between"><b>RH</b><span>80 %</span></div></div><div style="color:#bbb;text-align:center;font:12px system-ui;margin-top:6px">Kestrel 5700</div></div>`;
   // Kestrel: raised into the wind, the vane wheel spins up, then lowered in front of the face and read
   B(10, "s10.kestrel", (S, u, b) => { prone(S); S.props.kestrel = "hand"; S.man.look = "kestrel";
-    S.man.R = u < 0.25 ? { from: "grip", to: "kestrelUp", k: ease(seg(u, 0, 0.25)) } : "kestrelUp";
+    // the left hand measures (author, 18 XI); the right hand stays on the grip
+    S.man.R = "grip"; S.man.L = u < 0.25 ? { from: "bag", to: "kestrelUp", k: ease(seg(u, 0, 0.25)) } : "kestrelUp";
     const t = S.tInBeat - b.dur * 0.25; S.props.spin = t > 0 ? 18 * t * Math.min(1, t / 1.5) : 0;
     S.cam = u < 0.5 ? { kind: "follow", off: [-1.1, 0.9, 1.6], look: [0.2, 0.55, 0.5] } : { kind: "prop", dist: 0.32 }; });   // close-up: the impeller spinning
   B(10, "s10.reading", (S, u, b) => { prone(S); S.props.kestrel = "hand"; S.man.look = "kestrel";
-    S.man.R = u < 0.3 ? { from: "kestrelUp", to: "kestrelRead", k: ease(seg(u, 0, 0.3)) } : "kestrelRead";
+    S.man.R = "grip"; S.man.L = u < 0.3 ? { from: "kestrelUp", to: "kestrelRead", k: ease(seg(u, 0, 0.3)) } : "kestrelRead";
     const t = S.tInBeat; S.props.spin = 1000 + 18 * t * Math.max(0, 1 - t / 4);
     S.cam = { kind: "follow", off: [-0.8, 0.75, 1.15], look: [0.15, 0.35, 0.65] }; if (u > 0.3) S.ov.kes = [KES, "right:6%;top:14%"]; });
   // after the reading the Kestrel lies on the ground beside the shooter, display up, showing the wind in m/s
@@ -552,7 +553,7 @@ export async function play(ctx) {
   // "Sprawdziłem!" still kneeling and gets up during the next sentence
   // the instructor goes round behind the shooter's feet to the right side of the rifle: never over him, never in front
   // of the muzzle (author, 18 XI)
-  const INSPECT_ROUTE = [INST, W(-1.6, 2.2), W(-2.9, 1.2), W(-2.9, -1.0), W(-0.9, -0.9), g(INSPECT.clone())];
+  const INSPECT_ROUTE = [INST, W(-1.8, 2.3), W(-3.5, 1.5), W(-3.5, -1.2), W(-0.9, -1.0), g(INSPECT.clone())];   // well behind the feet
   function routeAt(pts, k) {
     const seg = pts.slice(1).map((p, i) => p.distanceTo(pts[i])), total = seg.reduce((a, b) => a + b, 0);
     let d = k * total, i = 0; while (i < seg.length - 1 && d > seg[i]) { d -= seg[i]; i++; }
@@ -636,9 +637,25 @@ export async function play(ctx) {
   let labelsOn = false, freeCam = false;
   const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
   const controls = new OrbitControls(camera, ctx.renderer.domElement); controls.enabled = false; controls.enableDamping = true;
+  // free camera keys (author, 18 XI): W/S forward and back, A/D sideways, Q/E down and up, Shift faster; the orbit
+  // centre moves with the camera
+  const keys = new Set(); let keyT = performance.now();
+  addEventListener("keydown", e => { if (freeCam && /^[wsadqe]$/i.test(e.key)) { keys.add(e.key.toLowerCase()); e.preventDefault(); } if (e.key === "Shift") keys.add("shift"); });
+  addEventListener("keyup", e => { keys.delete(e.key.toLowerCase()); if (e.key === "Shift") keys.delete("shift"); });
+  addEventListener("blur", () => keys.clear());
+  const freeMove = () => { const now = performance.now(), dt = Math.min(0.1, (now - keyT) / 1000); keyT = now; if (!keys.size) return;
+    const sp = (keys.has("shift") ? 12 : 3) * dt, f = camera.getWorldDirection(V()).setY(0).normalize(), r = V(-f.z, 0, f.x), m = V();
+    if (keys.has("w")) m.add(f); if (keys.has("s")) m.sub(f); if (keys.has("d")) m.add(r); if (keys.has("a")) m.sub(r);
+    if (keys.has("e")) m.y += 1; if (keys.has("q")) m.y -= 1;
+    if (m.lengthSq()) { m.normalize().multiplyScalar(sp); camera.position.add(m); controls.target.add(m); } };
   const [{ EffectComposer }, { RenderPass }, { BokehPass }, { OutputPass }] = await Promise.all(["EffectComposer", "RenderPass", "BokehPass", "OutputPass"].map(n => import(`three/addons/postprocessing/${n}.js`)));
   const composer = new EffectComposer(ctx.renderer); composer.addPass(new RenderPass(scene, camera));
   const bokeh = new BokehPass(scene, camera, { focus: 3, aperture: 0.004, maxblur: 0.012 }); composer.addPass(bokeh); composer.addPass(new OutputPass());
+  // far-side blur only, and never within 50 m of the camera (author, 18 XI): the shader's |depth - focus| becomes
+  // min(max(focus, 50 m) - depth, 0) (viewZ is negative depth)
+  { const m = bokeh.materialBokeh, src = m.fragmentShader;
+    m.fragmentShader = src.replace(/float factor = \( focus \+ viewZ \);/, "float factor = min( max( focus, 50.0 ) + viewZ, 0.0 );"); m.needsUpdate = true;
+    if (m.fragmentShader === src) console.warn("bokeh patch not applied"); }
   addEventListener("resize", () => composer.setSize(innerWidth, innerHeight));
   window.__renderOverride = () => {                              // __dbgCam: test hook, a fixed camera for close-up checks
     const dc = window.__dbgCam; if (dc) { camera.position.copy(dc.p); camera.lookAt(dc.t); camera.fov = dc.fov || 40; camera.updateProjectionMatrix(); }
@@ -662,10 +679,11 @@ export async function play(ctx) {
   // per hold: rifle-local hand orientation (Euler YXZ) and finger joint angles. The turret holds were fitted numerically
   // (18 XI): index pad and thumb on opposite sides of the cap, no finger inside the cap or the scope, joints within
   // their natural range
-  const HAND_ORIENT = { elev: [-0.852, 3.563, -2.952], windage: [-0.946, 2.768, -3.139] };
+  // (refitted 18 XI with the wrist kept within ~30 degrees of the forearm: it was bent up too far)
+  const HAND_ORIENT = { elev: [-1.076, -1.79, -4.045], windage: [-1.469, 2.59, -2.419] };
   const FINGER_POSE = {
-    elev: { indexA: [0.754, 0.577, 0.323], gripA: [0.874, 1.343, 0.202], thumbA: [0.481, 0.264, 0.453], thumbUp: 0.145 },
-    windage: { indexA: [1.66, 1.042, 0.588], gripA: [0.453, 1.7, 1.497], thumbA: [0.617, 0.483, 0.956], thumbUp: 0.038 } };
+    elev: { indexA: [0.98, 0.926, 0.328], gripA: [1.44, 0.564, 0.793], thumbA: [0.575, 0.604, 1.255], thumbUp: 0.213 },
+    windage: { indexA: [0.958, 1.293, 0.239], gripA: [0.46, 1.58, 0.705], thumbA: [0.935, 0, 0.556], thumbUp: -0.281 } };
   // the pinching hand turns with the cap, letting go and taking a new hold every ~40 degrees
   const TURRET_AX = { elev: { p: V(0, 0.121, -0.405), a: V(0, 1, 0), ang: S => S.rifle.elev / 10 * Math.PI * 2 },
     windage: { p: V(0.031, 0.086, -0.405), a: V(1, 0, 0), ang: S => -S.rifle.wind / 10 * Math.PI * 2 } };
@@ -677,10 +695,10 @@ export async function play(ctx) {
     bipod: [[-0.06, -0.12, -0.80], [0.0, -0.2, -0.86]], charging: [[0.075, 0.02, -0.52], [0.045, 0.02, -0.57]],
     chamber: [[0.10, 0.03, -0.38], [0.025, 0.0, -0.45]], capF: [[0.07, 0.03, -0.53], [0.01, 0.05, -0.595]], capR: [[0.10, 0.07, -0.17], [0.035, 0.085, -0.245]],   // to the lid tabs
     capDropF: [[0.19, -0.17, -0.31], [0.17, -0.24, -0.37]], capDropR: [[0.23, -0.17, -0.22], [0.21, -0.24, -0.28]],
-    elev: [[0.101, 0.181, -0.361], [0.004, 0.14, -0.41]], windage: [[0.041, 0.131, -0.334], [0.045, 0.086, -0.41]], parallax: [[-0.10, 0.07, -0.38], [-0.045, 0.086, -0.41]],
+    elev: [[0.07, 0.164, -0.347], [0.004, 0.14, -0.41]], windage: [[0.099, 0.092, -0.323], [0.045, 0.086, -0.41]], parallax: [[-0.10, 0.07, -0.38], [-0.045, 0.086, -0.41]],
     bag: [[-0.075, -0.17, -0.02], [-0.02, -0.16, -0.09]], magwell: [[0.04, -0.20, -0.46], [0.0, -0.13, -0.49]], boltcatch: [[-0.06, -0.06, -0.38], [-0.02, -0.04, -0.42]],
     write: [[-0.20, -0.20, -0.25], [-0.25, -0.235, -0.33]], notebook: [[-0.36, -0.21, -0.30], [-0.30, -0.235, -0.33]],
-    kestrel: [[-0.12, 0.06, -0.40], [-0.15, 0.12, -0.45]], kestrelUp: [[-0.22, 0.42, -0.42], [-0.24, 0.52, -0.44]], kestrelRead: [[-0.13, 0.05, -0.30], [-0.12, 0.13, -0.27]], magload: [[-0.12, -0.17, -0.40], [-0.17, -0.18, -0.45]], mag: [[-0.25, -0.18, -0.42], [-0.18, -0.18, -0.45]],
+    kestrel: [[-0.12, 0.06, -0.40], [-0.15, 0.12, -0.45]], kestrelUp: [[-0.22, 0.42, -0.42], [-0.24, 0.52, -0.44]], kestrelRead: [[-0.20, -0.02, -0.56], [-0.18, 0.08, -0.60]], magload: [[-0.12, -0.17, -0.40], [-0.17, -0.18, -0.45]], mag: [[-0.25, -0.18, -0.42], [-0.18, -0.18, -0.45]],
     maginspect: [[-0.06, -0.02, -0.42], [-0.12, 0.02, -0.48]],
   };
   const lookTargets = { port: () => rifle.localToWorld(V(0.02, 0, -0.43)), mag: () => magProp.getWorldPosition(V()), kestrel: () => kestrel.getWorldPosition(V()), notebook: () => notebook.getWorldPosition(V()) };
@@ -812,10 +830,10 @@ export async function play(ctx) {
     notebook.visible = !!S.props.notebook; if (notebook.visible) { notebook.position.copy(rifle.localToWorld(V(-0.29, -0.245, -0.32))); notebook.quaternion.copy(qGround); }
     kestrel.visible = !!S.props.kestrel;
     if (S.props.kestrel === "ground") {                    // lying flat right of the stock, display up, top towards the target
-      const p = rifle.localToWorld(V(0.32, 0, 0.05)); p.y = hAt(p.x, p.z) + 0.015; kestrel.position.copy(p);
+      const p = rifle.localToWorld(V(-0.26, 0, -0.50)); p.y = hAt(p.x, p.z) + 0.015; kestrel.position.copy(p);   // put down on the left of the handguard, by the hand that held it
       const Yv = V(0, 0, -1).applyQuaternion(rifle.quaternion).setY(0).normalize(), Zv = V(0, 1, 0), Xv = Yv.clone().cross(Zv).normalize();
       kestrel.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(Xv, Yv, Zv)); impeller.rotation.x = 0; }
-    else if (kestrel.visible) { kestrel.position.copy(man.rig.B.RightHand.localToWorld(V(0, 0.08, 0.03))); kestrel.quaternion.copy(man.rig.B.RightHand.getWorldQuaternion(new THREE.Quaternion())); impeller.rotation.x = S.props.spin || 0; }
+
     magProp.visible = !!S.props.mag;
     const MAG_C = V(0, -0.083, -0.46);                               // centre of the magazine in rifle coordinates
     if (S.props.mag === "chest") {                                   // held upright in front of the chest, lips up
@@ -837,10 +855,19 @@ export async function play(ctx) {
       // above the trigger guard; middle, ring and little finger wrap the front of the grip (angles measured on the Grot)
       const gripIdx = key === "grip" ? { gripA: [0.9, 1.2, 0.4], ...(S.man.trigger ? { indexA: [0, 1.65, 0.45 + 0.3 * (S.man.press || 0)] } : { indexA: [-0.5, 0, 0], indexUp: -0.35 }) } : {};
       const tk = key === "grip" ? (S.man.thumbK || 0) : 0;            // thumb from the grip to the safety lever (measured on the Grot)
-      const thumbPose = tk > 0 ? { thumbA: [0.21 + (-0.3 - 0.21) * tk, 0.36 + (0.8 - 0.36) * tk + 0.15 * (S.rifle.selK ?? 0) * tk, 0.36 + (0.8 - 0.36) * tk], thumbUp: -0.3 * tk } : {};
+      // thumb at rest along the right side of the receiver (author, 18 XI); it goes over to the lever only for the safety
+      const TR = [0, 0.3, 0.2], TRU = 0.9, TL = [-0.3, 0.8, 0.8], TLU = -0.3;
+      const thumbPose = key === "grip" ? { thumbA: TR.map((v, i) => v + (TL[i] - v) * tk + (i === 1 ? 0.15 * (S.rifle.selK ?? 0) * tk : 0)), thumbUp: TRU + (TLU - TRU) * tk } : {};
       const fp_ = (window.__hk && window.__hk.key === key ? window.__hk.fingers : FINGER_POSE[key]) || {};
       handsMan.update({ R: { curl: key === "chamber" ? 0.75 : hold ?? (h ? S.man.curl.R : 0.25), index, thumb: key === "grip" ? 0.6 : null, ...gripIdx, ...thumbPose, ...fp_ },
-                        L: { curl: S.man.L ? (S.man.L === "bag" ? 0.75 : S.man.L === "handguard" ? 0.6 : 0.55) : 0.25 } });
+                        L: { curl: S.man.L ? (/kestrel/.test(typeof S.man.L === "string" ? S.man.L : S.man.L.to || "") ? 0.7 : S.man.L === "bag" ? 0.75 : S.man.L === "handguard" ? 0.6 : 0.55) : 0.25 } });
+    if (kestrel.visible && S.props.kestrel !== "ground") {   // after the hands are posed this frame
+      // held from below in the fingertips, the whole device above the hand (author, 18 XI)
+      const hb = man.rig.B.LeftHand, hq = hb.getWorldQuaternion(new THREE.Quaternion()), hy = V(0, 1, 0).applyQuaternion(hq).normalize();
+      const kp = handsMan.handPoint("L", 0, window.__kY ?? 0.215, 0.005); kestrel.position.copy(kp);
+      // the display (+Z of the model) always turned to the shooter's face (author, 18 XI)
+      const dz = man.rig.B.Head.getWorldPosition(V()).sub(kp), zz = dz.addScaledVector(hy, -dz.dot(hy)).normalize(), xx = hy.clone().cross(zz).normalize();
+      kestrel.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xx, hy, zz)); impeller.rotation.x = S.props.spin || 0; }
       handsInst.update({ R: { curl: 0.3 }, L: { curl: 0.3 } }); }
     // shots: tracer, flash, case, gong
     tracer.visible = false; flash.visible = false; flashLight.intensity = 0; caseEject.visible = false;
@@ -866,7 +893,7 @@ export async function play(ctx) {
     // overlays
     for (const id of ["glove", "dial", "note", "windLook", "kes", "f", "card", "sel", "slow", "arc"]) OV.show(id, S.ov[id] ? S.ov[id][0] : null, S.ov[id] ? S.ov[id][1] : "");
     // camera
-    if (freeCam) { controls.update(); setScope(null); man.m.visible = rifle.visible = capF.visible = capR.visible = true; camera.fov = 50; camera.updateProjectionMatrix(); setFocus(controls.target); return; }
+    if (freeCam) { freeMove(); controls.update(); setScope(null); man.m.visible = rifle.visible = capF.visible = capR.visible = true; camera.fov = 50; camera.updateProjectionMatrix(); setFocus(controls.target); return; }
     const c = S.cam || { kind: "follow", off: [2.5, 1.2, 1.5], look: [0, 0.8, 0] };
     setScope(c.kind === "scope" ? S.scope : null, T);
     man.m.visible = rifle.visible = c.kind !== "scope";             // the eye sits inside the head mesh
@@ -897,7 +924,7 @@ export async function play(ctx) {
       camera.position.copy(h).add(V(-0.55, 0.06, 0.35).applyQuaternion(q)); camera.fov = 35; camera.lookAt(h); focusPt = h; }
     else if (c.kind === "prop") {                                    // close-up on the Kestrel, square to its display
       const kp = kestrel.getWorldPosition(V()).add(V(0, 0.03, 0).applyQuaternion(kestrel.quaternion));
-      camera.position.copy(kp).add(V(0.05, 0.02, 1).normalize().multiplyScalar(c.dist).applyQuaternion(kestrel.quaternion)); camera.fov = 36; camera.lookAt(kp); focusPt = kp; }
+      camera.position.copy(kp).add(V(0.05, 0.02, window.__kcam ?? 1).normalize().multiplyScalar(c.dist).applyQuaternion(kestrel.quaternion)); camera.fov = 36; camera.lookAt(kp); focusPt = kp; }
     else if (c.kind === "kestrelGround") {                       // straight down onto the display, a little from the side
       const kp = kestrel.getWorldPosition(V()).add(V(0, 0, -0.012).applyQuaternion(kestrel.quaternion).multiplyScalar(0));
       const lcd = kestrel.localToWorld(V(0, -0.005, 0.012));
@@ -947,13 +974,26 @@ export async function play(ctx) {
       for (let m = -10; m <= 10; m++) { if (!m) continue; const d = m * k; if (Math.abs(d) > R) continue;
         s += `<circle cx="${cx + d}" cy="${cy}" r="${Math.max(1.2, 0.1 * k)}" fill="#0b0b0b"/><circle cx="${cx}" cy="${cy + d}" r="${Math.max(1.2, 0.1 * k)}" fill="#0b0b0b"/>`; }
       for (const [x1, y1, x2, y2] of [[cx - R, cy, cx - 10 * k, cy], [cx + 10 * k, cy, cx + R, cy], [cx, cy + 10 * k, cx, cy + R]]) s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#0b0b0b" stroke-width="${Math.max(3, 0.4 * k)}"/>`;
-      if (sc.measure === "h") s += `<line x1="${cx + 1.6 * k}" y1="${cy - 0.8 * k}" x2="${cx + 1.6 * k}" y2="${cy + 0.8 * k}" stroke="#f2c94c" stroke-width="2"/><text x="${cx + 1.9 * k}" y="${cy + 6}" fill="#f2c94c" font-size="22" font-family="system-ui" font-weight="700">1,6 mil</text>`;
-      if (sc.measure === "w") s += `<line x1="${cx - 0.4 * k}" y1="${cy - 1.1 * k}" x2="${cx + 0.4 * k}" y2="${cy - 1.1 * k}" stroke="#f2c94c" stroke-width="2"/><text x="${cx - 0.4 * k}" y="${cy - 1.3 * k}" fill="#f2c94c" font-size="22" font-family="system-ui" font-weight="700">0,8 mil</text>`;
+
       scopeOv.innerHTML = `<div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 50%, transparent ${R - 4}px, rgba(0,0,0,.92) ${R + 1}px, #000 ${R + 3}px)"></div>
-        <svg width="${W_}" height="${H}" style="position:absolute;inset:0">${s}</svg>
+        <svg width="${W_}" height="${H}" style="position:absolute;inset:0">${s}</svg><svg class="measure" width="${W_}" height="${H}" style="position:absolute;inset:0"></svg>
         <div style="position:absolute;bottom:120px;width:100%;text-align:center;color:#aaa;font:13px monospace">S&amp;B PM II 3-12×50 · ${sc.mag.toFixed(1).replace(".", ",")}× · siatka mil-dot (FFP)</div>`;
     }
     canvas.style.filter = sc.blur ? `blur(${Math.min(6, sc.blur).toFixed(1)}px)` : "";
+    // the measured size drawn along the real edges of the plate, projected every frame (the reticle moves over it)
+    const ms = scopeOv.querySelector("svg.measure");
+    if (ms) { let m = "";
+      if (sc.measure) {
+        const side = V(-fwd.z, 0, fwd.x).normalize(), scr = p => { const v = p.clone().project(camera); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; };
+        const top = scr(GC.clone().add(V(0, 0.5, 0))), bot = scr(GC.clone().add(V(0, -0.5, 0)));
+        const l = scr(GC.clone().addScaledVector(side, -0.25)), r = scr(GC.clone().addScaledVector(side, 0.25));
+        const xr = Math.max(l[0], r[0]), xl = Math.min(l[0], r[0]);
+        const tick = (x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#f2c94c" stroke-width="2"/>`;
+        if (sc.measure === "h") { const x = xr + 10; m = tick(x, top[1], x, bot[1]) + tick(x - 6, top[1], x + 6, top[1]) + tick(x - 6, bot[1], x + 6, bot[1])
+          + `<text x="${x + 10}" y="${(top[1] + bot[1]) / 2 + 7}" fill="#f2c94c" font-size="22" font-family="system-ui" font-weight="700">1,6 mil</text>`; }
+        if (sc.measure === "w") { const y = Math.min(top[1], bot[1]) - 12; m = tick(xl, y, xr, y) + tick(xl, y - 6, xl, y + 6) + tick(xr, y - 6, xr, y + 6)
+          + `<text x="${xl}" y="${y - 12}" fill="#f2c94c" font-size="22" font-family="system-ui" font-weight="700">0,8 mil</text>`; } }
+      if (ms.innerHTML !== m) ms.innerHTML = m; }
   }
   function scopeCamera(sc, T, recoil) {
     const g_ = scopeGeom(sc.mag);
@@ -999,7 +1039,7 @@ export async function play(ctx) {
 
   (window.__frameHooks = window.__frameHooks || []).push(hook);
   addEventListener("pointerdown", () => snd.unlock(), { once: true });
-  window.__demo = { tl, render, man, inst, handsMan, handsInst, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt };
+  window.__demo = { tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt };
 }
 
 // ---------- rear bag ----------
