@@ -702,6 +702,8 @@ export async function play(ctx) {
   // (18 XI): index pad and thumb on opposite sides of the cap, no finger inside the cap or the scope, joints within
   // their natural range
   // (refitted 18 XI with the wrist kept within ~30 degrees of the forearm: it was bent up too far)
+  const kesPinch = () => { const L_ = curS && curS.man.L, key = typeof L_ === "string" ? L_ : L_ && L_.to; return /kestrel/.test(key || "") && curS.props.kestrel && curS.props.kestrel !== "ground"; };
+  let curS = null;
   const HAND_ORIENT = { elev: [-1.076, -1.79, -4.045], windage: [-1.469, 2.59, -2.419] };
   const FINGER_POSE = {
     elev: { indexA: [0.98, 0.926, 0.328], gripA: [1.44, 0.564, 0.793], thumbA: [0.575, 0.604, 1.255], thumbUp: 0.213 },
@@ -726,6 +728,7 @@ export async function play(ctx) {
   const lookTargets = { port: () => rifle.localToWorld(V(0.02, 0, -0.43)), mag: () => magProp.getWorldPosition(V()), kestrel: () => kestrel.getWorldPosition(V()), notebook: () => notebook.getWorldPosition(V()) };
 
   function render(S, T) {
+    curS = S;
     // rifle
     const rm = rifleMatrix(S); rifle.position.copy(rm.p); rifle.quaternion.copy(rm.q);
     // recoil from shots
@@ -816,6 +819,13 @@ export async function play(ctx) {
       armJobs.push([side, wr, V(...tgt[1])]);
     }
     for (const [side, wr, kn] of armJobs) rig.arm(side, rifle.localToWorld(wr), rifle.localToWorld(kn));   // after all the bending
+    // Kestrel in the left hand (author, 18 XI): hand upright, palm turned to the face, the device pinched at its lower end
+    // between thumb and index finger and standing above the hand
+    const kesHold = () => { const L_ = S.man.L, key = typeof L_ === "string" ? L_ : L_ && L_.to; return /kestrel/.test(key || "") && S.props.kestrel && S.props.kestrel !== "ground"; };
+    if (kesHold()) { const hb = rig.B.LeftHand, hp = hb.getWorldPosition(V()), toFace = rig.B.Head.getWorldPosition(V()).sub(hp).setY(0).normalize();
+      const Y = V(0, 1, 0), X = toFace, Z = X.clone().cross(Y).normalize(), pq = new THREE.Quaternion();
+      const qh = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
+      hb.parent.getWorldQuaternion(pq); hb.quaternion.copy(pq.invert().multiply(qh)); hb.updateMatrixWorld(true); }
     // turrets: the hand's orientation is set in the rifle frame (thumb and index pinch the cap), measured below
     { const key = typeof S.man.R === "string" ? S.man.R : null, hk = window.__hk && window.__hk.key === key ? window.__hk : null;
       const eul = hk ? hk.euler : HAND_ORIENT[key];
@@ -883,11 +893,12 @@ export async function play(ctx) {
       const thumbPose = key === "grip" ? { thumbA: TR.map((v, i) => v + (TL[i] - v) * tk + (i === 1 ? 0.15 * (S.rifle.selK ?? 0) * tk : 0)), thumbUp: TRU + (TLU - TRU) * tk } : {};
       const fp_ = (window.__hk && window.__hk.key === key ? window.__hk.fingers : FINGER_POSE[key]) || {};
       handsMan.update({ R: { curl: key === "chamber" ? 0.75 : hold ?? (h ? S.man.curl.R : 0.25), index, thumb: key === "grip" ? 0.6 : null, ...gripIdx, ...thumbPose, ...fp_ },
-                        L: { curl: S.man.L ? (/kestrel/.test(typeof S.man.L === "string" ? S.man.L : S.man.L.to || "") ? 0.7 : S.man.L === "bag" ? 0.75 : S.man.L === "handguard" ? 0.6 : 0.55) : 0.25 } });
+                        L: kesPinch() ? { curl: 0.35, indexA: [0.55, 0.7, 0.35], thumbA: [0.45, 0.35, 0.25], thumbUp: 0.25 } : { curl: S.man.L ? (/kestrel/.test(typeof S.man.L === "string" ? S.man.L : S.man.L.to || "") ? 0.7 : S.man.L === "bag" ? 0.75 : S.man.L === "handguard" ? 0.6 : 0.55) : 0.25 } }); 
     if (kestrel.visible && S.props.kestrel !== "ground") {   // after the hands are posed this frame
       // held from below in the fingertips, the whole device above the hand (author, 18 XI)
       const hb = man.rig.B.LeftHand, hq = hb.getWorldQuaternion(new THREE.Quaternion()), hy = V(0, 1, 0).applyQuaternion(hq).normalize();
-      const kp = handsMan.handPoint("L", 0, window.__kY ?? 0.215, 0.005); kestrel.position.copy(kp);
+      const hh = handsMan.hands.L, tipW = bn => bn.localToWorld(V(0, bn.children[0]?.position.length() || 0.02, 0));
+      const pinch = tipW(hh.fing.index[2]).lerp(tipW(hh.fing.thumb[2]), 0.5), kp = pinch.addScaledVector(hy, 0.052); kestrel.position.copy(kp);   // lower end in the pinch
       // the display (+Z of the model) always turned to the shooter's face (author, 18 XI)
       const dz = man.rig.B.Head.getWorldPosition(V()).sub(kp), zz = dz.addScaledVector(hy, -dz.dot(hy)).normalize(), xx = hy.clone().cross(zz).normalize();
       kestrel.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xx, hy, zz)); impeller.rotation.x = S.props.spin || 0; }
