@@ -152,6 +152,29 @@ export async function play(ctx) {
   const chRest = RP.ch.position.clone(), boltRest = RP.bolt.position.clone(), selRest = RP.sel.quaternion.clone();
   const KN = { elev: node("scope_elevation"), wind: node("scope_windage"), plx: node("scope_parallax") };
   const knRest = Object.fromEntries(Object.entries(KN).map(([k, o]) => [k, o ? o.quaternion.clone() : null]));
+  // turret scales read at the index (author, 18 XI): from the engraved mesh itself (uv u = angle) find how u maps to the
+  // angle about the knob axis, then turn the knob so the set value sits at the index mark. Elevation 12 mrad per turn
+  // (white 0-11, yellow 12-23), windage 0 on top with R clockwise, parallax 50 m - inf; index: yellow mark / top.
+  const scaleFit = (knob, axis) => { let sx = 0, sy = 0, tx = 0, ty = 0, n = 0;
+    const ang = p => axis === "Y" ? Math.atan2(p.x, p.z) : Math.atan2(p.z, p.y);
+    knob.traverse(o => { if (!o.isMesh || !/_scale$/.test(o.material.name || "")) return; const P = o.geometry.attributes.position, U = o.geometry.attributes.uv; if (!U) return;
+      const m = new THREE.Matrix4().copy(knob.matrixWorld).invert().multiply(o.matrixWorld);
+      for (let i = 0; i < P.count; i += 3) { const th = ang(V().fromBufferAttribute(P, i).applyMatrix4(m)), u = U.getX(i) * 2 * Math.PI;
+        sx += Math.cos(u - th); sy += Math.sin(u - th); tx += Math.cos(u + th); ty += Math.sin(u + th); n++; } });
+    const c = Math.hypot(sx, sy) >= Math.hypot(tx, ty) ? 1 : -1, d = c > 0 ? Math.atan2(sy, sx) : Math.atan2(ty, tx);   // u = c*th + d (rad)
+    return { c, d, n, ang }; };
+  rifle.updateMatrixWorld(true);
+  const SCF = { elev: KN.elev && scaleFit(KN.elev, "Y"), wind: KN.wind && scaleFit(KN.wind, "X"), plx: KN.plx && scaleFit(KN.plx, "X") };
+  const idxElev = (() => { let p = null; rifle.traverse(o => { if (!p && o.isMesh && o.material && o.material.name === "index_yellow") p = o.getWorldPosition(V()); });
+    return p ? SCF.elev.ang(KN.elev.worldToLocal(p)) : Math.PI; })();
+  const PLX = [50, 70, 100, 150, 200, 300, 500, 1000, 3000];
+  const dialAngle = (key, S) => { const f = SCF[key]; if (!f || !f.n) return 0; let u, th;
+    if (key === "elev") { u = (S.rifle.elev * 10 + 0.5) / 120; th = idxElev; }
+    else if (key === "wind") { u = (-S.rifle.wind * 10 + 0.5) / 120; th = 0; }                // wind > 0 = left
+    else { const dd = Math.max(50, Math.min(3000, S.rifle.parallax)); let i = 0; while (i < PLX.length - 2 && dd > PLX[i + 1]) i++;
+      const k = Math.log(dd / PLX[i]) / Math.log(PLX[i + 1] / PLX[i]); u = ((i + k) * 10 + 0.5) / 90; th = 0; }
+    const thT = (u * 2 * Math.PI - f.d) / f.c; return th - thT; };
+  window.__scf = { SCF, idxElev };
   const EYE = V(0, 0.0857, -0.1414), MUZZLE = V(0, 0, -1.223) /* front of the suppressor */, BIPOD_FOOT = V(0, -0.2513, -0.873);
   // on the ground: bipod feet at the firing point, line of sight on the gong centre
   const feet = W(0, 0);
@@ -359,11 +382,12 @@ export async function play(ctx) {
   const card = (x, y, w, inner, extra = "") => [inner, `left:${x};top:${y};width:${w};background:#f4f1e8;color:#1d2a40;border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.5);padding:14px 18px;font:20px/1.45 'Segoe Print','Bradley Hand','Comic Sans MS',cursive;${extra}`];
   const reveal = (lines, u) => lines.slice(0, Math.ceil(lines.length * Math.min(1, u * 1.15) - 1e-6)).join("<br>");
   const dial = (title, value, lo, hi, unit) => {             // turret dial seen from above: index line + rotating scale
-    const turns = value / 10, a = -turns * 360, ticks = [];
-    for (let k = 0; k < 100; k++) { const r1 = 92, r2 = k % 10 === 0 ? 72 : k % 5 === 0 ? 78 : 84, an = (k * 3.6 + a) * Math.PI / 180;
+    // hi = mrad per turn (PM II: 12, 120 clicks); a windage dial (lo < 0) counts R clockwise and L anticlockwise from 0
+    const N = hi * 10, step = 360 / N, turns = value / hi, a = -turns * 360, ticks = [];
+    for (let k = 0; k < N; k++) { const r1 = 92, r2 = k % 10 === 0 ? 72 : k % 5 === 0 ? 78 : 84, an = (k * step + a) * Math.PI / 180;
       ticks.push(`<line x1="${110 + r1 * Math.sin(an)}" y1="${110 - r1 * Math.cos(an)}" x2="${110 + r2 * Math.sin(an)}" y2="${110 - r2 * Math.cos(an)}" stroke="#ddd" stroke-width="${k % 10 ? 1 : 2.4}"/>`);
-      if (k % 10 === 0) ticks.push(`<text x="${110 + 60 * Math.sin(an)}" y="${116 - 60 * Math.cos(an)}" fill="#fff" font-size="15" text-anchor="middle" font-family="monospace">${k / 10}</text>`); }
-    return [`<div style="font:600 15px system-ui;color:#f2c94c;margin-bottom:4px">${title}</div><svg width="220" height="220"><circle cx="110" cy="110" r="100" fill="#151515" stroke="#444" stroke-width="3"/>${ticks.join("")}<polygon points="110,6 103,-6 117,-6" fill="#f2c94c" transform="translate(0,10)"/></svg><div style="font:700 22px monospace;color:#fff;text-align:center">${value.toFixed(1).replace(".", ",")} ${unit}</div>`,
+      if (k % 10 === 0) ticks.push(`<text x="${110 + 60 * Math.sin(an)}" y="${116 - 60 * Math.cos(an)}" fill="#fff" font-size="15" text-anchor="middle" font-family="monospace">${lo < 0 ? (k <= N / 2 ? k / 10 : (N - k) / 10) : k / 10}</text>`); }
+    return [`<div style="font:600 15px system-ui;color:#f2c94c;margin-bottom:4px">${title}</div><svg width="220" height="220"><circle cx="110" cy="110" r="100" fill="#151515" stroke="#444" stroke-width="3"/>${ticks.join("")}<polygon points="110,6 103,-6 117,-6" fill="#f2c94c" transform="translate(0,10)"/></svg><div style="font:700 22px monospace;color:#fff;text-align:center">${Math.abs(value).toFixed(1).replace(".", ",")} ${unit}${lo < 0 && Math.abs(value) > 0.04 ? (value > 0 ? " R" : " L") : ""}</div>`,
       `background:rgba(0,0,0,.78);padding:12px 16px;border-radius:8px;`];
   };
   const turretDialAt = (x, y, ...a) => { const [h, css] = dial(...a); return [h, `left:${x};top:${y};` + css]; };
@@ -372,7 +396,7 @@ export async function play(ctx) {
   const init = () => ({
     man: { at: START.clone(), yaw: yawOf(LINE.clone().sub(START)), clips: [["Walking", 0, 1]], R: "grip", L: null, look: null, curl: { R: 0.8, L: 0.3 }, walk: 0 },
     inst: { at: INST.clone(), yaw: yawOf(KNEEL.clone().sub(INST)), clips: null, walk: 0, lean: 0, look: "shooter" },
-    rifle: { mode: "sling", blend: 0, bipod: false, rack: 0, boltOpen: false, magIn: false, safety: "Z", capF: "on", capR: "on", elev: 0.8, wind: 0.2, parallax: 300 },
+    rifle: { mode: "sling", blend: 0, bipod: false, rack: 0, boltOpen: false, magIn: false, safety: "Z", capF: "on", capR: "on", elev: 0.8, wind: -0.2,   /* 0.2 mrad R (wind > 0 = left) */ parallax: 300 },
     props: { notebook: null, kestrel: null, mag: null, rounds: 0, roundsInMag: 0 },
     cam: { kind: "follow", off: [2.6, 1.3, 2.4], look: [0, 1.1, 0] },
     scope: null, ov: {}, shots: [], recoil: 0,
@@ -434,9 +458,9 @@ export async function play(ctx) {
   const capsOff = S => { kneelWork(S); S.rifle.boltOpen = true; S.rifle.capF = S.rifle.capR = "ground"; };
   B(5, "s05.turrets", (S, u) => { capsOff(S); S.man.R = "elev"; S.cam = { kind: "rifle", pos: [0.46, 0.16, -0.50], look: [0, 0.11, -0.41], near: true, fov: 40 }; });
   B(5, "s05.elev", (S, u) => { capsOff(S); S.man.R = "elev"; S.rifle.elev = lerp(0.8, 0, ease(seg(u, 0.35, 0.8)));
-    S.cam = { kind: "rifle", pos: [0.06, 0.24, -0.62], look: [0, 0.12, -0.41], near: true, fov: 34 }; S.ov.dial = turretDialAt("6%", "18%", "Bęben wysokości", S.rifle.elev, 0, 10, "mrad"); });
-  B(5, "s05.wind", (S, u) => { capsOff(S); S.rifle.elev = 0; S.man.R = "windage"; S.rifle.wind = lerp(0.2, 0, ease(seg(u, 0.3, 0.7)));
-    S.cam = { kind: "rifle", pos: [0.16, 0.13, -0.62], look: [0.03, 0.088, -0.41], near: true, fov: 34 }; S.ov.dial = turretDialAt("6%", "18%", "Bęben poprawek bocznych (P)", S.rifle.wind, 0, 10, "mrad"); });
+    S.cam = { kind: "rifle", pos: [0.06, 0.24, -0.62], look: [0, 0.12, -0.41], near: true, fov: 34 }; S.ov.dial = turretDialAt("6%", "18%", "Bęben wysokości", S.rifle.elev, 0, 12, "mrad"); });
+  B(5, "s05.wind", (S, u) => { capsOff(S); S.rifle.elev = 0; S.man.R = "windage"; S.rifle.wind = lerp(-0.2, 0, ease(seg(u, 0.3, 0.7)));
+    S.cam = { kind: "rifle", pos: [0.16, 0.13, -0.62], look: [0.03, 0.088, -0.41], near: true, fov: 34 }; S.ov.dial = turretDialAt("6%", "18%", "Bęben poprawek bocznych", -S.rifle.wind, -6, 12, "mrad"); });
   // 6 prone behind the rifle (still unloaded, action open)
   const ready = S => { onGround(S); S.rifle.boltOpen = true; S.rifle.capF = S.rifle.capR = "ground"; S.rifle.elev = 0; S.rifle.wind = 0; };
   B(6, "s06.prone", (S, u) => { ready(S); const k = ease(u); S.man.at = KNEEL.clone().lerp(PRONE, k); S.man.yaw = lerp(KNEEL_YAW, yawFwd, k);
@@ -509,9 +533,9 @@ export async function play(ctx) {
   B(13, "s13.parallax", (S, u) => { prone(S); S.man.L = "parallax"; S.rifle.parallax = lerp(300, 600, ease(seg(u, 0.1, 0.6)));
     scopeCam(S, { mag: 12, blur: Math.abs(S.rifle.parallax - 600) / 120, wobble: u > 0.65 ? Math.sin((u - 0.65) * 40) * 0.25 : 0 }); });
   B(13, "s13.elev", (S, u) => { prone(S); S.rifle.parallax = 600; S.man.R = "elev"; S.rifle.elev = lerp(0, ELEV, ease(seg(u, 0.15, 0.8))); S.cam = { kind: "rifle", pos: [0.05, 0.42, -0.36], look: [0, 0.13, -0.405] };
-    S.ov.dial = turretDialAt("6%", "18%", "Bęben wysokości (↑)", S.rifle.elev, 0, 10, "mrad"); });
+    S.ov.dial = turretDialAt("6%", "18%", "Bęben wysokości (↑)", S.rifle.elev, 0, 12, "mrad"); });
   B(13, "s13.wind", (S, u) => { prone(S); S.rifle.parallax = 600; S.rifle.elev = ELEV; S.man.R = "windage"; S.rifle.wind = lerp(0, WIND, ease(seg(u, 0.1, 0.55))); S.cam = u < 0.6 ? { kind: "rifle", pos: [0.32, 0.2, -0.3], look: [0.03, 0.086, -0.405] } : null;
-    if (u < 0.6) S.ov.dial = turretDialAt("6%", "18%", "Bęben poprawek bocznych (L)", S.rifle.wind, 0, 10, "mrad"); else scopeCam(S, { mag: 12 }); });
+    if (u < 0.6) S.ov.dial = turretDialAt("6%", "18%", "Bęben poprawek bocznych", -S.rifle.wind, -6, 12, "mrad"); else scopeCam(S, { mag: 12 }); });
   const dialled = S => { prone(S); S.rifle.elev = ELEV; S.rifle.wind = WIND; S.rifle.parallax = 600; };
   // 14 "Ognia!": safety off
   cmd(14, "s14.cmd", S => dialled(S));
@@ -843,9 +867,9 @@ export async function play(ctx) {
     portLight.intensity = S.rifle.boltOpen ? (window.__portI ?? 0.35) : 0;
     placeCap(capF, "F", S.rifle.capF); placeCap(capR, "R", S.rifle.capR);
     const turn = (o, rest, axis, a) => { if (o) o.quaternion.copy(rest).multiply(new THREE.Quaternion().setFromAxisAngle(axis, a)); };
-    turn(KN.elev, knRest.elev, V(0, 1, 0), S.rifle.elev / 10 * Math.PI * 2);            // 10 mrad per turn
-    turn(KN.wind, knRest.wind, V(1, 0, 0), -S.rifle.wind / 10 * Math.PI * 2);
-    turn(KN.plx, knRest.plx, V(1, 0, 0), (S.rifle.parallax - 300) / 300 * Math.PI * 0.8);
+    turn(KN.elev, knRest.elev, V(0, 1, 0), dialAngle("elev", S));                       // the set value at the index mark
+    turn(KN.wind, knRest.wind, V(1, 0, 0), dialAngle("wind", S));
+    turn(KN.plx, knRest.plx, V(1, 0, 0), dialAngle("plx", S));
     rig.curl("R", S.man.curl.R, { indexOn: S.man.trigger || S.man.R === "chamber" }); rig.curl("L", S.man.curl.L);
     // sling strap while carried
     if (S.rifle.mode === "sling" || (S.rifle.mode === "carry" && S.rifle.blend < 0.3)) {
