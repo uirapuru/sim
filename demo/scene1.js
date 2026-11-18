@@ -317,7 +317,7 @@ export async function play(ctx) {
       const p0 = sh.clone().lerp(el, 0.33), out = p0.clone().sub(V(hips.x, p0.y, hips.z)); out.addScaledVector(axis, -out.dot(axis)).normalize();
       ray.set(p0.clone().addScaledVector(out, 0.3), out.clone().negate()); const hit = ray.intersectObjects(targets, false)[0]; if (!hit) continue;
       const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : out.clone(); if (n.dot(out) < 0) n.negate();
-      const up_ = axis.clone().addScaledVector(n, -axis.dot(n)).normalize(), across = up_.clone().cross(n).normalize();
+      const vy = V(0, 1, 0), up_ = vy.clone().addScaledVector(n, -vy.dot(n)).normalize(), across = up_.clone().cross(n).normalize();   // level, white up
       const flagM = new THREE.Mesh(new THREE.PlaneGeometry(0.042, 0.02625), fm); flagM.name = "flag_" + P;
       flagM.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(across, up_, n)); flagM.position.copy(hit.point).addScaledVector(n, 0.004);
       scene.add(flagM); inst.rig.B[P + "Arm"].attach(flagM); } }   // + Meshy motions: going prone, getting up   // instructor: wz.93 uniform model (Meshy, from the KBW boards)
@@ -633,8 +633,30 @@ export async function play(ctx) {
   const impact = n => { const p = pathAt(RANGE, n), loc = pivot.worldToLocal(p.clone()); return [-loc.x, loc.y - (-0.82)]; };   // plate coords (x right from the shooter's view, y up)
 
   // ---------- render one evaluated state ----------
-  const panel = makePanel(tl, { title: TITLE, onToggleLabels: on => { labelsOn = on; }, onCamMode: f => { freeCam = f; controls.enabled = f; if (f) { controls.target.copy(man.m.position).add(V(0, 0.6, 0)); } } });
-  let labelsOn = false, freeCam = false;
+  const panel = makePanel(tl, { title: TITLE, onToggleLabels: on => { labelsOn = on; }, onCamMode: m => { freeCam = m === "free"; fpp = m === "fpp"; controls.enabled = freeCam; if (freeCam) { controls.target.copy(man.m.position).add(V(0, 0.6, 0)); } } });
+  let labelsOn = false, freeCam = false, fpp = false;
+  // first person (author, 18 XI): the camera in the shooter's eyes, turning smoothly to what he is doing; the script's
+  // scope shots are kept, every other shot is replaced by the eye view
+  const fppDir = V(0, 0, 1); let fppT = performance.now(), fppInit = false;
+  function fppTarget(S) {
+    if (S.man.look && lookTargets[S.man.look]) return lookTargets[S.man.look]();
+    if (S.props.kestrel && S.props.kestrel !== "ground") return kestrel.getWorldPosition(V());
+    const busy = h => h && h !== "grip" && h !== "bag" && h !== "handguard";
+    if (busy(S.man.R)) return handsMan.handPoint("R", 0, 0.1, 0);
+    if (busy(S.man.L)) return handsMan.handPoint("L", 0, 0.1, 0);
+    if (S.rifle.mode === "ground" && clipsList_.some(c => c[0] === "Prone_Fire" && c[2] > 0.5)) return GC.clone();
+    return man.m.localToWorld(V(0, 1.4, 12));                     // walking / kneeling: straight ahead
+  }
+  function fppCamera(S) {
+    const hf = man.m.getObjectByName("headfront"), head = man.rig.B.Head.getWorldPosition(V()), fr = hf ? hf.getWorldPosition(V()) : head.clone().add(V(0, 0.05, 0));
+    const proneNow = clipsList_.some(c => c[0] === "Prone_Fire" && c[2] > 0.5) && S.rifle.mode === "ground";
+    const fwd = fr.clone().sub(head).setY(0).normalize(), eye = proneNow ? fr.clone().add(V(0, 0.075, 0)).addScaledVector(fwd, 0.02)   // prone: just over the scope, not into the eyepiece
+      : fr.clone().addScaledVector(fwd, 0.12).add(V(0, 0.02, 0));   // just in front of the face: the hood stays out of the view
+    const want = fppTarget(S).sub(eye).normalize(), now = performance.now(), k = 1 - Math.exp(-(now - fppT) / 1000 * 3.5); fppT = now;
+    if (!fppInit) { fppDir.copy(want); fppInit = true; } else fppDir.lerp(want, k).normalize();
+    camera.position.copy(eye); camera.up.set(0, 1, 0); camera.lookAt(eye.clone().add(fppDir)); camera.fov = 62; camera.updateProjectionMatrix();
+  }
+  let clipsList_ = [];
   const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
   const controls = new OrbitControls(camera, ctx.renderer.domElement); controls.enabled = false; controls.enableDamping = true;
   // free camera keys (author, 18 XI): W/S forward and back, A/D sideways, Q/E down and up, Shift faster; the orbit
@@ -731,6 +753,7 @@ export async function play(ctx) {
     const rig = man.rig;
     // life: breathing (torso rises and falls), small head turns and weight shifts; driven by T so scrubbing stays exact
     const prone_ = clipsList.some(c => c[0] === "Prone_Fire" && c[2] > 0.5);
+    clipsList_ = clipsList;
     if (prone_ && S.rifle.mode === "ground") {
       // stock in the shoulder pocket: roll the torso until the right shoulder is down at the butt pad, then slide the
       // body so the shoulder sits just right of and behind the pad; the head turns to the eyepiece (cheek on the rest)
@@ -895,6 +918,8 @@ export async function play(ctx) {
     // camera
     if (freeCam) { freeMove(); controls.update(); setScope(null); man.m.visible = rifle.visible = capF.visible = capR.visible = true; camera.fov = 50; camera.updateProjectionMatrix(); setFocus(controls.target); return; }
     const c = S.cam || { kind: "follow", off: [2.5, 1.2, 1.5], look: [0, 0.8, 0] };
+    if (fpp && c.kind !== "scope") { setScope(null); man.m.visible = rifle.visible = capF.visible = capR.visible = true; fppCamera(S); setFocus(null); return; }
+    if (fpp) fppInit = false;                                      // back from the scope: the eyes pick up the new target at once
     setScope(c.kind === "scope" ? S.scope : null, T);
     man.m.visible = rifle.visible = c.kind !== "scope";             // the eye sits inside the head mesh
     capF.visible = capR.visible = c.kind !== "scope";               // the flip-up lids sit in front of the objective

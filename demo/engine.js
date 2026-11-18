@@ -116,7 +116,9 @@ export function makePanel(tl, { onToggleLabels, onCamMode, title }) {
   const labB = btn("Etykiety", "Podpisy przy częściach wyposażenia", () => { labels = !labels; labB.classList.toggle("on", labels); onToggleLabels(labels); });
   const subB = btn("Napisy", "Tekst lektora na ekranie", () => { subs = !subs; subB.classList.toggle("on", subs); });
   subB.classList.add("on");
-  const camB = btn("Kamera: scenariusz", "Przełącz na kamerę swobodną (przeciągnij, kółko)", () => { free = !free; camB.textContent = free ? "Kamera: swobodna" : "Kamera: scenariusz"; camB.classList.toggle("on", free); onCamMode(free); });
+  // camera modes in turn: the script's shots, the shooter's own eyes (first person), free (drag, wheel, WSAD + QE)
+  const MODES = [["script", "Kamera: scenariusz"], ["fpp", "Kamera: oczy strzelca"], ["free", "Kamera: swobodna"]]; let mode = 0;
+  const camB = btn("Kamera: scenariusz", "Przełącz kamerę: scenariusz → oczy strzelca → swobodna", () => { mode = (mode + 1) % MODES.length; camB.textContent = MODES[mode][1]; camB.classList.toggle("on", mode > 0); onCamMode(MODES[mode][0]); });
   row1.append(ttl);
   row2.append(start, prev, ...scnBtns, next, playB, slider, time, subB, labB, camB);
   p.append(row1, row2);
