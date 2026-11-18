@@ -180,6 +180,7 @@ const orthoRGB = (x, z) => { const i = (Math.floor(z - NEAR.z0) * 800 + Math.flo
 // ---------- wind ----------
 const windU = { value: 4 }, timeU = { value: 0 };
 const windDir = new THREE.Vector2(0.8, 0.6).normalize();
+const windDirU = { value: windDir.clone() };   // the training mode turns it round for wind from the other side
 
 // ---------- grass: instanced blade clusters around the camera ----------
 const bladeTex = new THREE.CanvasTexture(noiseCanvas(256, (g, s) => {
@@ -204,12 +205,12 @@ const tuft = new THREE.BufferGeometry();
 }
 const grassMat = new THREE.MeshLambertMaterial({ alphaMap: bladeTex, alphaTest: 0.4, side: THREE.DoubleSide });
 grassMat.onBeforeCompile = sh => {
-  sh.uniforms.wind = windU; sh.uniforms.time = timeU;
-  sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nuniform float wind; uniform float time;")
+  sh.uniforms.wind = windU; sh.uniforms.time = timeU; sh.uniforms.windDir = windDirU;
+  sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nuniform float wind; uniform float time; uniform vec2 windDir;")
     .replace("#include <begin_vertex>", `#include <begin_vertex>
       vec4 ip = instanceMatrix * vec4(0.0,0.0,0.0,1.0);
       float sway = (0.04 + 0.03 * wind) * (sin(time * (1.3 + 0.15 * wind) + ip.x * 0.35 + ip.z * 0.21) + 0.6) * position.y * position.y;
-      transformed.x += sway * ${windDir.x.toFixed(3)} * 3.0; transformed.z += sway * ${windDir.y.toFixed(3)} * 3.0;`);
+      transformed.x += sway * windDir.x * 3.0; transformed.z += sway * windDir.y * 3.0;`);
   sh.fragmentShader = sh.fragmentShader.replace("#include <alphamap_fragment>", "#include <alphamap_fragment>\n diffuseColor.rgb *= 0.65 + 0.5 * vAlphaMapUv.y;")
     .replace("#include <normal_fragment_begin>", "#include <normal_fragment_begin>\n normal = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);");   // light blades like the ground, both sides
 };
@@ -480,7 +481,7 @@ const mixers = [];
   p = at(-20, 8);  const walker = spawn(p[0], p[1], p[2], 0, "Casual_Walk");
   walker.path = { a: at(-20, 8), b: at(20, 8), t: 0 };
   window.__walker = walker; window.__main = main; window.__clips = clips;
-  window.__ctx = { THREE, scene, camera, renderer, hAt, meta, FIRE, gltf, clips, SkeletonUtils, GLTFLoader, mixers };
+  window.__ctx = { THREE, scene, camera, renderer, hAt, meta, FIRE, gltf, clips, SkeletonUtils, GLTFLoader, mixers, windDirU, windU };
   // clip picker for the soldier next to the firing point
   const sel = document.createElement("select");
   for (const c of gltf.animations) sel.add(new Option(c.name.replace(/_/g, " "), c.name));

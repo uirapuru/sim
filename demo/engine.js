@@ -38,6 +38,7 @@ export class Timeline {
     for (const b of beats) if (!(b.scene in this.sceneStarts)) this.sceneStarts[b.scene] = b.start;
     this.scenes = Object.keys(this.sceneStarts).map(Number).sort((a, b) => a - b);
     this.T = 0; this.playing = false; this.events = []; this.listeners = [];
+    this.voice = true; this.stopAt = null; this._done = null;   // training: narration off, play one step and stop
   }
   sceneAt(T) { let s = this.scenes[0]; for (const n of this.scenes) if (this.sceneStarts[n] <= T + 1e-6) s = n; return s; }
   beatAt(T) { let cur = this.beats[0]; for (const b of this.beats) if (b.start <= T) cur = b; return cur; }
@@ -55,7 +56,8 @@ export class Timeline {
   // sounds: S.events holds {t, kind}; fire the ones crossed between prev and T (only while playing forwards)
   step(dt) {
     const prev = this.T;
-    if (this.playing) this.T = Math.min(this.total, this.T + dt);
+    if (this.playing) this.T = Math.min(this.total, this.T + dt * (window.__tlRate || 1));   /* __tlRate: test hook, faster playback */
+    if (this.stopAt != null && this.T >= this.stopAt) { this.T = this.stopAt; this.playing = false; this.stopAt = null; const d = this._done; this._done = null; d && d(); }
     if (this.T >= this.total) this.playing = false;
     this.syncAudio();
     return prev;
@@ -72,7 +74,7 @@ export class Timeline {
   stopVoice() { if (this.src) { try { this.src.node.stop(); } catch (e) { } this.src = null; } }
   syncAudio() {
     const b = this.beatAt(this.T), off = this.T - (b ? b.start : 0);
-    const want = this.playing && b && b.buffer && off >= 0 && off < b.speech ? b : null;
+    const want = this.voice && this.playing && b && b.buffer && off >= 0 && off < b.speech ? b : null;
     if (!want) { this.stopVoice(); return; }
     if (this.src && this.src.beat === want) {         // keep it, unless it drifted from the timeline
       const played = this.ac.currentTime - this.src.t0 + this.src.off;
@@ -85,6 +87,16 @@ export class Timeline {
   seek(T) { this.T = Math.max(0, Math.min(this.total, T)); this.stopVoice(); this.syncAudio(); }
   play() { this.ac.resume(); if (this.T >= this.total - 0.05) this.T = 0; this.playing = true; this.syncAudio(); }
   pause() { this.playing = false; this.syncAudio(); }
+  beatByKey(key) { const b = this.beats.find(b => b.say === key); if (!b) throw new Error("no beat " + key); return b; }
+  // the frame before a step: the start of its first beat (or a given point u of a beat), paused
+  holdAt(key, u = 0) { this.cancelRange(); const b = this.beatByKey(key); this.seek(b.start + Math.max(0.001, b.dur * u)); this.playing = false; this.syncAudio(); }
+  // play from the start of beat fromKey up to the start of the next beat after toKey (beats without narration in
+  // between are included), then pause; resolves then, or at once when cancelled or replaced
+  playRange(fromKey, toKey) {
+    this.cancelRange(); const a = this.beatByKey(fromKey), b = this.beatByKey(toKey);
+    this.seek(a.start + 0.001); this.stopAt = Math.min(this.total, b.start + b.dur - 0.001);
+    return new Promise(res => { this._done = res; this.play(); }); }
+  cancelRange() { const was = this._done; this.stopAt = null; this._done = null; if (was) { this.playing = false; this.syncAudio(); } was && was(); }   // a cancelled step also stops
 }
 
 const CSS = `
@@ -93,6 +105,7 @@ const CSS = `
 #demoPanel .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 #demoPanel button { background: #2a2e33; color: #eee; border: 1px solid #444; border-radius: 4px; padding: 4px 9px; font: inherit; cursor: pointer; }
 #demoPanel button:hover { background: #3a3f45; }
+#demoPanel button:disabled { opacity: .4; cursor: default; }
 #demoPanel button.on { background: #f2c94c; color: #111; border-color: #f2c94c; }
 #demoPanel .scn { min-width: 30px; }
 #demoPanel input[type=range] { flex: 1; min-width: 160px; accent-color: #f2c94c; }
@@ -146,7 +159,7 @@ export function makePanel(tl, { onToggleLabels, onCamMode, title, lesson = title
   slider.oninput = () => { dragging = true; tl.seek(+slider.value); };
   slider.onchange = () => { dragging = false; };
   const time = document.createElement("span"); time.className = "time";
-  let labels = false, subs = true, free = false;
+  let labels = false, subs = true, free = false, locked = false;
   const labB = btn("Etykiety", "Podpisy przy częściach wyposażenia", () => { labels = !labels; labB.classList.toggle("on", labels); onToggleLabels(labels); });
   const subB = btn("Napisy", "Tekst lektora na ekranie", () => { subs = !subs; subB.classList.toggle("on", subs); });
   subB.classList.add("on");
@@ -185,9 +198,9 @@ export function makePanel(tl, { onToggleLabels, onCamMode, title, lesson = title
   }
   addEventListener("keydown", e => {
     if (e.target.tagName === "INPUT" && e.target.type !== "range") return;
-    if (e.code === "Space") { e.preventDefault(); tl.playing ? tl.pause() : tl.play(); }
-    if (e.code === "ArrowRight" && e.shiftKey) go(1);
-    if (e.code === "ArrowLeft" && e.shiftKey) go(-1);
+    if (e.code === "Space" && !locked) { e.preventDefault(); tl.playing ? tl.pause() : tl.play(); }
+    if (e.code === "ArrowRight" && e.shiftKey && !locked) go(1);
+    if (e.code === "ArrowLeft" && e.shiftKey && !locked) go(-1);
     if (e.code === "KeyM" && !e.ctrlKey) volume.set(volume.level, !volume.muted);
     if (e.code === "KeyF" && !e.ctrlKey && !e.repeat) toggleFs();
   });
@@ -206,6 +219,11 @@ export function makePanel(tl, { onToggleLabels, onCamMode, title, lesson = title
       sub.className = b && b.speaker === "instructor" ? "instr" : "";
     },
     get labels() { return labels; }, get free() { return free; },
+    setSubs(on) { subs = on; subB.classList.toggle("on", subs); },
+    setLabels(on) { if (labels !== on) labB.click(); labB.disabled = false; },
+    lockLabels(on) { labB.disabled = on; },
+    // during a task the chapter bar, the slider and play are locked: the task drives the timeline
+    setLocked(on) { for (const x of [start, prev, next, playB, slider, ...scnBtns, ...chBtns]) x.disabled = on; p.classList.toggle("locked", on); locked = on; },
   };
 }
 
