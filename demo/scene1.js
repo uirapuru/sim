@@ -983,9 +983,13 @@ export async function play(ctx) {
       magProp.quaternion.copy(q); magProp.position.copy(man.m.localToWorld(V(0.0, 1.0, 0.34))).sub(MAG_C.clone().applyQuaternion(q));
     } else if (S.props.mag === "insert") {                          // the mesh is in rifle coordinates: offset from its seated place
       magProp.position.copy(rifle.localToWorld(V(...S.props.magOff))); magProp.quaternion.copy(rifle.quaternion);
-    } else if (magProp.visible) {
-      const at = { hands: V(-0.17, -0.2, -0.43), well: V(0, -0.2, -0.47), inspect: V(-0.09, -0.02, -0.47), ground: V(-0.22, -0.21, -0.55) }[S.props.mag] || V();
-      magProp.position.copy(rifle.localToWorld(at)); magProp.quaternion.copy(rifle.quaternion);
+    } else if (S.props.mag === "ground") {                          // put down on its side left of the handguard, on the terrain
+      const c = rifle.localToWorld(V(-0.22, 0, -0.55)); c.y = hAt(c.x, c.z) + 0.014;
+      const q = rifle.quaternion.clone().multiply(new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), Math.PI / 2));
+      magProp.quaternion.copy(q); magProp.position.copy(c).sub(MAG_C.clone().applyQuaternion(q));
+    } else if (magProp.visible) {                                    // at = where the magazine's centre goes, in rifle coordinates
+      const at = { hands: V(-0.17, -0.2, -0.43), well: V(0, -0.2, -0.47), inspect: V(-0.09, -0.02, -0.47) }[S.props.mag] || MAG_C;
+      magProp.position.copy(rifle.localToWorld(at.clone().sub(MAG_C))); magProp.quaternion.copy(rifle.quaternion);   // the mesh is in rifle coordinates
     }
     rounds.forEach((r, i) => {                                       // loose rounds in the left palm, pushed into the magazine one by one
       r.visible = (S.props.mag === "hands" || S.props.mag === "chest") && i >= S.props.roundsInMag;
