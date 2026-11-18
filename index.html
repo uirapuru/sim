@@ -491,8 +491,8 @@ const mixers = [];
 
 // ---------- time of day (simplified sun path for mid-November, 52.9° N) ----------
 const sunDir = new THREE.Vector3();
-function setHour(h) {
-  const decl = -18.5 * Math.PI / 180, lat = 52.9 * Math.PI / 180, ha = (h - 11.8) * 15 * Math.PI / 180;
+function setHour(h, declDeg = -18.5) {                          // declDeg: sun declination (season), -18.5 = late autumn
+  const decl = declDeg * Math.PI / 180, lat = 52.9 * Math.PI / 180, ha = (h - 11.8) * 15 * Math.PI / 180;
   const alt = Math.asin(Math.sin(lat) * Math.sin(decl) + Math.cos(lat) * Math.cos(decl) * Math.cos(ha));
   const az = Math.atan2(Math.sin(ha), Math.cos(ha) * Math.sin(lat) - Math.tan(decl) * Math.cos(lat)) + Math.PI;
   sunDir.set(Math.sin(az) * Math.cos(alt), Math.sin(alt), -Math.cos(az) * Math.cos(alt));

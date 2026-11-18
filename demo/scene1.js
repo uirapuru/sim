@@ -26,6 +26,7 @@ export async function play(ctx) {
   // ---------- clean stage: only our actors ----------
   for (const o of [...scene.children]) { let sk = false; o.traverse(c => { if (c.isSkinnedMesh) sk = true; }); if (sk || o.userData.distanceMarker) o.visible = false; }
   window.__walker = null; window.__camOverride = true;
+  if (window.__sim && window.__sim.setHour) window.__sim.setHour(10, 8);   // a clear September morning: the rifle is lit from the side, not against the sun (author, 18 XI)
   for (const id of ["hud", "info"]) { const e = document.getElementById(id); if (e) e.style.display = "none"; }
 
   const [manifest, BAL, rifleG, spotG, kesG, gloveG, instG, animG] = await Promise.all([
@@ -122,6 +123,10 @@ export async function play(ctx) {
 
   // ---------- rifle ----------
   const rifle = rifleG.scene; scene.add(rifle);
+  // daylight scattered into the open action: the black-anodized inside of the receiver reads as metal, not as a cover
+  // over the port, when the bolt is back (author, 18 XI); switched off with the bolt closed
+  rifle.traverse(o => { if (o.isMesh && o.material && o.material.name === "bolt_steel") { o.material = o.material.clone(); o.material.color.set(window.__boltCol ?? 0x9a9da0); o.material.metalness = 0.75; o.material.roughness = 0.38; } });   // bead-blasted steel bolt carrier: seen through the port
+  const portLight = new THREE.PointLight(0xfff1dc, 0, 0.22, 1.6); portLight.position.set(0.004, 0.012, -0.43); rifle.add(portLight);
   // suppressor on the muzzle brake (KBW boards photo, author 18 XI): a darker ribbed QD mount over the brake and a
   // coyote-brown can, about 4 + 17 cm, 44 mm across; rifle-local, the bore along -Z
   { const sup = new THREE.Group(); sup.name = "suppressor";
@@ -378,7 +383,7 @@ export async function play(ctx) {
   const B = (scene, say, act, o = {}) => beats.push({ scene, say, act, ...o });
   const lerp = (a, b, u) => a + (b - a) * u, ease = u => u * u * (3 - 2 * u), seg = (u, a, b) => Math.min(1, Math.max(0, (u - a) / (b - a)));
   const walkTo = (S, from, to, u) => { S.man.at = from.clone().lerp(to, u); S.man.yaw = yawOf(to.clone().sub(from)); };
-  const kneelPose = S => { S.man.at = KNEEL.clone(); S.man.yaw = KNEEL_YAW; S.man.clips = [["Kneel_Work", 1.5 + (S.T || 0) % 4, 1]]; };   // Meshy "kneel and work on the rifle" (replaces a frozen kneel frame)
+  const kneelPose = S => { S.man.at = KNEEL.clone(); S.man.yaw = KNEEL_YAW; S.man.clips = [["Kneel_Work", window.__kwT ?? 2.4, 1]]; };   // Meshy "kneel and work on the rifle", a calm frame (a looping clip made him rock and jump)
   const pronePose = S => { S.man.at = PRONE.clone(); S.man.yaw = yawFwd; S.man.clips = [["Prone_Fire", 0.5, 1]]; };
   const onGround = S => { S.rifle.mode = "ground"; S.rifle.bipod = true; };
   const shootingHands = S => { S.man.R = "grip"; S.man.L = "bag"; S.man.curl = { R: 0.8, L: 0.6 }; };
@@ -409,7 +414,7 @@ export async function play(ctx) {
     S.cam = { kind: "rifle", pos: [-0.55, -0.05, -0.75], look: [0, -0.15, -0.85] }; });
   B(3, "s03.place", (S, u) => { kneelPose(S); S.rifle.mode = "carry"; S.rifle.bipod = true; S.rifle.blend = lerp(0.6, 1, ease(u)); S.man.L = "handguard"; S.cam = { kind: "follow", off: [2.0, 0.9, 1.0], look: [0, 0.4, 0.5] }; });
   // 4 unloaded check
-  const kneelWork = S => { kneelPose(S); onGround(S); S.man.L = "handguard"; S.man.lean = 0.35; };   // the clip already leans over the rifle: only a little extra bend   // deep bend: the shoulder must come down to a rifle 25 cm above the ground
+  const kneelWork = S => { kneelPose(S); onGround(S); S.man.L = "handguard"; S.man.lean = window.__kwLean ?? 0.2; S.man.kneelHinge = true; };   // the clip already leans over the rifle: only a little extra bend   // deep bend: the shoulder must come down to a rifle 25 cm above the ground
   B(4, "s04.why", (S, u) => { kneelWork(S); S.man.R = "grip"; S.cam = { kind: "follow", off: [1.7, 0.75, 1.2], look: [0, 0.45, 0.5] }; });
   B(4, "s04.open", (S, u) => { kneelWork(S); S.man.R = "charging"; S.rifle.rack = Math.sin(Math.PI * seg(u, 0.15, 0.7)); S.rifle.boltOpen = u > 0.45;
     S.cam = { kind: "rifle", pos: [0.42, 0.12, -0.45], look: [0.02, 0, -0.5] }; });
@@ -585,7 +590,7 @@ export async function play(ctx) {
   const SHOT_BEATS = beats.filter(b => /s15\.flight|s16\.repeat/.test(b.say));
 
   const tl = new Timeline({ beats, manifest, audioDir: "demo/audio/scene1", audioQuery: "?v=" + Date.now(), init, sceneTitles: SCENES });
-  tl.beforeBeat = S => { S.ov = {}; S.cam = null; S.scope = null; S.man.look = null; S.man.trigger = false; S.man.thumbK = 0; S.rifle.selK = undefined; S.man.curl = { R: 0.8, L: 0.3 }; S.props.kestrel = null; S.props.notebook = null; S.cycleT = null; S.man.lean = 0; S.inst.lean = 0; };   // hand-held props and the slow replay belong to their beat
+  tl.beforeBeat = S => { S.man.kneelHinge = false; S.ov = {}; S.cam = null; S.scope = null; S.man.look = null; S.man.trigger = false; S.man.thumbK = 0; S.rifle.selK = undefined; S.man.curl = { R: 0.8, L: 0.3 }; S.props.kestrel = null; S.props.notebook = null; S.cycleT = null; S.man.lean = 0; S.inst.lean = 0; };   // hand-held props and the slow replay belong to their beat
   // absolute shot times (needed by beats after the shots: marks, swing, bolt)
   const SHOTS = [{ n: 0, t0: SHOT_BEATS[0].start + 0.25, slow: SLOW }, { n: 1, t0: SHOT_BEATS[1].start + 3.0 }, { n: 2, t0: SHOT_BEATS[1].start + 10.5 }];
   const TOF = BAL.tof, SOUND_BACK = RANGE / SOUND;
@@ -695,7 +700,8 @@ export async function play(ctx) {
     let cyc = S.cycleT ?? null;
     for (const sh of SHOTS) { const t = bt(sh, T); if (t >= 0 && t < 0.7) cyc = t; }
     const back = cyc == null ? 0 : cyc < 0.04 ? cyc / 0.04 : cyc < 0.06 ? 1 : cyc < 0.11 ? 1 - (cyc - 0.06) / 0.05 : 0;
-    RP.bolt.position.copy(boltRest).add(V(0, 0, 0.09 * Math.max(boltBack, back)));   // locked back: bolt face at the rear edge of the port RP.dust.visible = !S.rifle.boltOpen && !SHOTS.some(s => T >= s.t0);
+    RP.bolt.position.copy(boltRest).add(V(0, 0, 0.09 * Math.max(boltBack, back)));   // locked back: bolt face at the rear edge of the port
+    RP.dust.visible = !S.rifle.boltOpen && !SHOTS.some(s => T >= s.t0);   // the port cover opens with the bolt (it stays open after firing)
     S.caseT = cyc;
     RP.mag.visible = S.rifle.magIn;
     RP.sel.quaternion.copy(selRest).multiply(new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), -0.9 * (S.rifle.selK ?? (S.rifle.safety === "P" ? 1 : 0))));
@@ -738,7 +744,8 @@ export async function play(ctx) {
       // cheek weld (as in the reference video): eye 7 cm behind the eyepiece on the scope axis, face along the line of sight
       if (!S.man.look) rig.eyeTo(rifle.localToWorld(V(0, 0.0857, -0.2314 + 0.07)), V(0, 0, -1).applyQuaternion(rifle.quaternion));
     }
-    rig.bend((S.man.lean || 0) + (prone_ ? 0.012 : 0.022) * Math.sin(2 * Math.PI * T / 4.2));
+    if (S.man.kneelHinge) rig.hinge(S.man.lean || 0, window.__kwStraight ?? 0.45); else rig.bend(S.man.lean || 0);   // kneeling over the rifle: a flat back
+    rig.bend((prone_ ? 0.012 : 0.022) * Math.sin(2 * Math.PI * T / 4.2));
     // nothing under the ground: when blended poses (kneel -> prone) push a body part below the surface, lift the soldier
     { let low = Infinity;
       for (const [n, clear] of [["Hips", 0.1], ["Spine1", 0.1], ["Spine2", 0.1], ["Head", 0.12], ["LeftLeg", 0.06], ["RightLeg", 0.06], ["LeftFoot", 0.05], ["RightFoot", 0.05], ["LeftToe_End", 0.0], ["RightToe_End", 0.0], ["LeftForeArm", 0.05], ["RightForeArm", 0.05]]) {
@@ -759,9 +766,12 @@ export async function play(ctx) {
       let wr = V(...tgt[0]); const tax = side === "R" && typeof h === "string" ? TURRET_AX[h] : null;
       if (tax) wr = wr.sub(tax.p).applyAxisAngle(tax.a, twistOf(h, S)).add(tax.p);
       // kneeling over the rifle: if the hand cannot reach its hold, bend the torso a little more until it can
+      // (one smooth amount, capped: bending in steps made the torso jitter frame to frame and hunch too far)
       if (!prone_) { const P = side === "R" ? "Right" : "Left", up_ = rig.B[P + "Arm"], fo = rig.B[P + "ForeArm"], ha = rig.B[P + "Hand"];
-        const reach = up_.getWorldPosition(V()).distanceTo(fo.getWorldPosition(V())) + fo.getWorldPosition(V()).distanceTo(ha.getWorldPosition(V()));
-        for (let n = 0; n < 10 && up_.getWorldPosition(V()).distanceTo(rifle.localToWorld(wr.clone())) > reach * 0.97; n++) { rig.bend(0.07); man.m.updateMatrixWorld(true); } }
+        const reach = 0.97 * (up_.getWorldPosition(V()).distanceTo(fo.getWorldPosition(V())) + fo.getWorldPosition(V()).distanceTo(ha.getWorldPosition(V())));
+        const tw = rifle.localToWorld(wr.clone()), d0 = up_.getWorldPosition(V()).distanceTo(tw);
+        if (d0 > reach) { rig.bend(0.2); man.m.updateMatrixWorld(true); const d1 = up_.getWorldPosition(V()).distanceTo(tw);   // linear estimate from one probe
+          const need = d0 > d1 ? Math.min(0.35, 0.2 * (d0 - reach) / (d0 - d1)) : 0; rig.bend(-0.2); rig.hinge(need); man.m.updateMatrixWorld(true); } }
       armJobs.push([side, wr, V(...tgt[1])]);
     }
     for (const [side, wr, kn] of armJobs) rig.arm(side, rifle.localToWorld(wr), rifle.localToWorld(kn));   // after all the bending
@@ -779,6 +789,7 @@ export async function play(ctx) {
       const qh = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z)), hb = rig.B.RightHand, pq = new THREE.Quaternion();
       hb.parent.getWorldQuaternion(pq); hb.quaternion.copy(pq.invert().multiply(qh)); hb.updateMatrixWorld(true);
     }
+    portLight.intensity = S.rifle.boltOpen ? (window.__portI ?? 0.35) : 0;
     placeCap(capF, "F", S.rifle.capF); placeCap(capR, "R", S.rifle.capR);
     const turn = (o, rest, axis, a) => { if (o) o.quaternion.copy(rest).multiply(new THREE.Quaternion().setFromAxisAngle(axis, a)); };
     turn(KN.elev, knRest.elev, V(0, 1, 0), S.rifle.elev / 10 * Math.PI * 2);            // 10 mrad per turn
@@ -855,10 +866,11 @@ export async function play(ctx) {
     // overlays
     for (const id of ["glove", "dial", "note", "windLook", "kes", "f", "card", "sel", "slow", "arc"]) OV.show(id, S.ov[id] ? S.ov[id][0] : null, S.ov[id] ? S.ov[id][1] : "");
     // camera
-    if (freeCam) { controls.update(); setScope(null); man.m.visible = rifle.visible = true; camera.fov = 50; camera.updateProjectionMatrix(); setFocus(controls.target); return; }
+    if (freeCam) { controls.update(); setScope(null); man.m.visible = rifle.visible = capF.visible = capR.visible = true; camera.fov = 50; camera.updateProjectionMatrix(); setFocus(controls.target); return; }
     const c = S.cam || { kind: "follow", off: [2.5, 1.2, 1.5], look: [0, 0.8, 0] };
     setScope(c.kind === "scope" ? S.scope : null, T);
     man.m.visible = rifle.visible = c.kind !== "scope";             // the eye sits inside the head mesh
+    capF.visible = capR.visible = c.kind !== "scope";               // the flip-up lids sit in front of the objective
     for (const h of Object.values(handsMan.hands)) h.g.visible = c.kind !== "scope";   // hands at the turrets would sit in front of the eye
     kestrel.visible = kestrel.visible && c.kind !== "scope"; notebook.visible = notebook.visible && c.kind !== "scope";
     if (grass) grass.visible = c.kind !== "scope";                    // prone eye is 0.37 m up, inside the grass tufts

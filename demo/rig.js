@@ -82,6 +82,17 @@ export function makeRig(THREE, man) {
       b.parent.getWorldQuaternion(pq); b.quaternion.copy(pq.invert().multiply(nw)); b.updateMatrixWorld(true);
     }
   }
+  // lean from the lower back with the upper back kept straight: the lowest spine bone takes the angle, the upper ones
+  // are turned back by straighten (rad) so a rounded clip pose becomes a flatter, hinged back
+  function hinge(angle, straighten = 0) {
+    const axis = V(1, 0, 0).applyQuaternion(man.getWorldQuaternion(new THREE.Quaternion()));
+    for (const [b, a] of [[B.Spine, angle + straighten], [B.Spine1, -straighten * 0.55], [B.Spine2, -straighten * 0.45]]) {
+      if (!b || !a) continue;
+      const q = new THREE.Quaternion().setFromAxisAngle(axis, a);
+      b.getWorldQuaternion(pq); const nw = q.multiply(pq);
+      b.parent.getWorldQuaternion(pq); b.quaternion.copy(pq.invert().multiply(nw)); b.updateMatrixWorld(true);
+    }
+  }
   // put the eye (headfront marker) on a point by turning the neck, then turn the head alone to face along dir
   // (cheek weld: eye behind the eyepiece, face along the line of sight)
   const front = (() => { let f = null; man.traverse(o => { if (!f && o.name === "headfront") f = o; }); return f; })();
@@ -95,5 +106,5 @@ export function makeRig(THREE, man) {
     B.Head.parent.getWorldQuaternion(pq); B.Head.quaternion.copy(pq.invert().multiply(nw)); B.Head.updateMatrixWorld(true);
     aim(B.Neck, front, point);                                   // the head turn moved the eye a little: settle it again
   }
-  return { B, arm, look, curl, bend, eyeTo, wp };
+  return { B, arm, look, curl, bend, hinge, eyeTo, wp };
 }
