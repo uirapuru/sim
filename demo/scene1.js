@@ -704,10 +704,10 @@ export async function play(ctx) {
   // (refitted 18 XI with the wrist kept within ~30 degrees of the forearm: it was bent up too far)
   const kesPinch = () => { const L_ = curS && curS.man.L, key = typeof L_ === "string" ? L_ : L_ && L_.to; return /kestrel/.test(key || "") && curS.props.kestrel && curS.props.kestrel !== "ground"; };
   let curS = null;
-  const HAND_ORIENT = { elev: [-1.076, -1.79, -4.045], windage: [-1.469, 2.59, -2.419] };
+  const HAND_ORIENT = { elev: [-1.076, -1.79, -4.045], windage: [-1.007, 0.472, -0.093] };
   const FINGER_POSE = {
     elev: { indexA: [0.98, 0.926, 0.328], gripA: [1.44, 0.564, 0.793], thumbA: [0.575, 0.604, 1.255], thumbUp: 0.213 },
-    windage: { indexA: [0.958, 1.293, 0.239], gripA: [0.46, 1.58, 0.705], thumbA: [0.935, 0, 0.556], thumbUp: -0.281 } };
+    windage: { indexA: [1.212, 0.739, 0.034], gripA: [0.985, 0.748, 0.024], thumbA: [0.635, 0.529, 0.678], thumbUp: -0.684 } };   // wrist low, beside the turret
   // the pinching hand turns with the cap, letting go and taking a new hold every ~40 degrees
   const TURRET_AX = { elev: { p: V(0, 0.121, -0.405), a: V(0, 1, 0), ang: S => S.rifle.elev / 10 * Math.PI * 2 },
     windage: { p: V(0.031, 0.086, -0.405), a: V(1, 0, 0), ang: S => -S.rifle.wind / 10 * Math.PI * 2 } };
@@ -719,7 +719,7 @@ export async function play(ctx) {
     bipod: [[-0.06, -0.12, -0.80], [0.0, -0.2, -0.86]], charging: [[0.075, 0.02, -0.52], [0.045, 0.02, -0.57]],
     chamber: [[0.10, 0.03, -0.38], [0.025, 0.0, -0.45]], capF: [[0.07, 0.03, -0.53], [0.01, 0.05, -0.595]], capR: [[0.10, 0.07, -0.17], [0.035, 0.085, -0.245]],   // to the lid tabs
     capDropF: [[0.19, -0.17, -0.31], [0.17, -0.24, -0.37]], capDropR: [[0.23, -0.17, -0.22], [0.21, -0.24, -0.28]],
-    elev: [[0.07, 0.164, -0.347], [0.004, 0.14, -0.41]], windage: [[0.099, 0.092, -0.323], [0.045, 0.086, -0.41]], parallax: [[-0.10, 0.07, -0.38], [-0.045, 0.086, -0.41]],
+    elev: [[0.07, 0.164, -0.347], [0.004, 0.14, -0.41]], windage: [[0.115, 0.047, -0.366], [0.045, 0.086, -0.41]], parallax: [[-0.10, 0.07, -0.38], [-0.045, 0.086, -0.41]],
     bag: [[-0.075, -0.17, -0.02], [-0.02, -0.16, -0.09]], magwell: [[0.04, -0.20, -0.46], [0.0, -0.13, -0.49]], boltcatch: [[-0.06, -0.06, -0.38], [-0.02, -0.04, -0.42]],
     write: [[-0.20, -0.20, -0.25], [-0.25, -0.235, -0.33]], notebook: [[-0.36, -0.21, -0.30], [-0.30, -0.235, -0.33]],
     kestrel: [[-0.12, 0.06, -0.40], [-0.15, 0.12, -0.45]], kestrelUp: [[-0.22, 0.42, -0.42], [-0.24, 0.52, -0.44]], kestrelRead: [[-0.20, -0.02, -0.56], [-0.18, 0.08, -0.60]], magload: [[-0.12, -0.17, -0.40], [-0.17, -0.18, -0.45]], mag: [[-0.25, -0.18, -0.42], [-0.18, -0.18, -0.45]],
@@ -889,7 +889,7 @@ export async function play(ctx) {
       const gripIdx = key === "grip" ? { gripA: [0.9, 1.2, 0.4], ...(S.man.trigger ? { indexA: [0, 1.65, 0.45 + 0.3 * (S.man.press || 0)] } : { indexA: [-0.5, 0, 0], indexUp: -0.35 }) } : {};
       const tk = key === "grip" ? (S.man.thumbK || 0) : 0;            // thumb from the grip to the safety lever (measured on the Grot)
       // thumb at rest along the right side of the receiver (author, 18 XI); it goes over to the lever only for the safety
-      const TR = [0, 0.3, 0.2], TRU = 0.9, TL = [-0.3, 0.8, 0.8], TLU = -0.3;
+      const TR = [-0.8, 0.3, 0.2], TRU = 0.9,   /* raised 30 degrees (author, 18 XI) */ TL = [-0.3, 0.8, 0.8], TLU = -0.3;
       const thumbPose = key === "grip" ? { thumbA: TR.map((v, i) => v + (TL[i] - v) * tk + (i === 1 ? 0.15 * (S.rifle.selK ?? 0) * tk : 0)), thumbUp: TRU + (TLU - TRU) * tk } : {};
       const fp_ = (window.__hk && window.__hk.key === key ? window.__hk.fingers : FINGER_POSE[key]) || {};
       handsMan.update({ R: { curl: key === "chamber" ? 0.75 : hold ?? (h ? S.man.curl.R : 0.25), index, thumb: key === "grip" ? 0.6 : null, ...gripIdx, ...thumbPose, ...fp_ },
