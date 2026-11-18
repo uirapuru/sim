@@ -5,6 +5,16 @@
 // settings; graded by the shot itself, see conditions.js). Values may be functions of the drawn conditions c.
 const fromText = c => c.windFrom === 9 ? "Z godziny 9, czyli z lewej" : "Z godziny 3, czyli z prawej";
 
+// the training is grouped into four sections over the 18 scenes of the lesson (author, 18 XI); a run started at a
+// section goes on through the following ones
+export const SECTIONS = [
+  { n: 1, title: "Czynności przed strzelaniem", scenes: [1, 7] },
+  { n: 2, title: "Pomiar odległości", scenes: [8, 12] },
+  { n: 3, title: "Nastawa i strzał", scenes: [13, 16] },
+  { n: 4, title: "Zakończenie strzelania", scenes: [17, 18] },
+];
+export const sectionOf = chapter => SECTIONS.find(x => chapter >= x.scenes[0] && chapter <= x.scenes[1]) || SECTIONS[SECTIONS.length - 1];
+
 export const STEPS = [
   { id: "ears", chapter: 1, kind: "action", anywhere: true, target: "ear_defenders", hold: { key: "s01.intro", u: 0.3 }, action: "Załóż ochronniki słuchu",
     ask: "Przygotuj się do wyjścia na linię: zadbaj o słuch.", play: ["s01.cmd", "s01.intro", "s01.carry", "s01.ears"],

@@ -4,7 +4,7 @@
 // student's own settings, and a miss sends him back to the settings.
 // modules are loaded with this file's version query, so a new deploy never mixes with cached old ones
 const V_ = new URL(import.meta.url).search;
-const [{ STEPS, ACTION_POOL }, { resolve, checkAction, checkMark, checkNumber, checkChoice, choiceOptions, optionsFor, scoreExam, parseNumber },
+const [{ STEPS, ACTION_POOL, SECTIONS, sectionOf }, { resolve, checkAction, checkMark, checkNumber, checkChoice, choiceOptions, optionsFor, scoreExam, parseNumber },
   { rollConditions, VIEW_CONDITIONS, tableDope }, { makeUi, f1 }] = await Promise.all(["steps_scene1", "check", "conditions", "ui"].map(n => import(`./${n}.js${V_}`)));
 
 const EXAM_MS = 45 * 60 * 1000, PASS = 80;   // author, 18 XI: 45 min for the whole exam, animations included
@@ -19,7 +19,7 @@ export async function startTask(mode, ctx, opts = {}) {
   if (!exam) {
     const sel = document.createElement("div");
     sel.innerHTML = `<p>Wykonujesz procedurę sam, krok po kroku. Wskaż w scenie element i wybierz czynność, a przy zadaniach rachunkowych wpisz wynik. Gdy utkniesz, użyj „Daj podpowiedź”.</p>
-      <p>Odległość do gongu i wiatr są losowane na to podejście.</p><label>Zacznij od rozdziału: <select>${Object.entries(chapterTitles).map(([n, t]) => `<option value="${n}">${n}. ${t}</option>`).join("")}</select></label>`;
+      <p>Odległość do gongu i wiatr są losowane na to podejście.</p><label>Zacznij od rozdziału: <select>${SECTIONS.map(x => `<option value="${x.n}">${x.n}. ${x.title}</option>`).join("")}</select></label>`;
     const v = opts.from ?? await ui.modal("Trening", sel, [{ text: "Anuluj", value: null }, { text: "Start", main: true, value: () => +sel.querySelector("select").value }]);
     if (v == null) { ui.destroy(); return; } from = v;
   } else {
@@ -31,7 +31,7 @@ export async function startTask(mode, ctx, opts = {}) {
   let tick = null;
   try {
   await demo.setConditions(c);
-  const steps = exam ? STEPS : STEPS.filter(s => s.chapter >= from);
+  const steps = exam ? STEPS : STEPS.filter(s => sectionOf(s.chapter).n >= from);
   panel.setLocked(true); panel.setSubs(false); tl.voice = false;
   if (exam) { panel.setLabels(false); panel.lockLabels(true); }
 
@@ -52,7 +52,7 @@ export async function startTask(mode, ctx, opts = {}) {
       cancelAsk = () => finish(null);
       window.__tkStep = { st, c, i };   /* test hook: the step being asked */
       const askText = exam && st.kind === "action" ? "Wykonaj następną czynność." : resolve(st.ask, c);
-      const meta = `Krok ${i + 1}/${n} · rozdział ${st.chapter}: ${chapterTitles[st.chapter] || ""}`;
+      const sec = sectionOf(st.chapter), meta = `Krok ${i + 1}/${n} · rozdział ${sec.n}: ${sec.title} · ${chapterTitles[st.chapter] || ""}`;
       let hinted = false;
       const view = ui.show({ meta, ask: askText, onQuit: quit, side: true, onHint: exam ? null : () => { hinted = true; view.feedback(st.hint, "info"); hint(st); } });
       timerEl = exam ? view.timer : null;
