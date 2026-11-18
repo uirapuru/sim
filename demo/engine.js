@@ -18,6 +18,16 @@ export const volume = {
   bind(ac) { const g = ac.createGain(); g.gain.value = this.gain; g.connect(ac.destination); this.subs.add(v => g.gain.setTargetAtTime(v, ac.currentTime, 0.02)); return g; },
 };
 
+// The beginning of each clip was clipped (author, 18 XI): the clips start speaking at their first sample, and a clip
+// was started a frame late (at its offset) or while the audio output was still waking up. Every clip gets LEAD s of
+// silence in front, and a clip that starts late by less than START_SLACK plays from its beginning anyway.
+export const LEAD = 0.5, START_SLACK = 0.1;   // the slack stays small: a clip behind by it still ends inside its beat (pad 0.35 s)
+export function withLead(ac, buf, lead = LEAD) {
+  const n = Math.round(lead * buf.sampleRate), out = ac.createBuffer(buf.numberOfChannels, buf.length + n, buf.sampleRate);
+  for (let c = 0; c < buf.numberOfChannels; c++) out.getChannelData(c).set(buf.getChannelData(c), n);
+  return out;
+}
+
 export class Timeline {
   constructor({ beats, manifest, audioDir, audioQuery = "", init, sceneTitles, pad = 0.35 }) {
     this.beats = beats; this.init = init; this.sceneTitles = sceneTitles;
@@ -27,7 +37,8 @@ export class Timeline {
       const m = b.say ? say[b.say] : null;
       if (b.say && !m) console.warn("no narration for", b.say);
       b.speech = m ? m.duration : 0; b.text = m ? m.text : ""; b.speaker = m ? m.speaker : null;
-      b.dur = Math.max(b.dur || 0, b.speech + (b.say ? pad : 0), b.min || 0.1);
+      b.dur0 = Math.max(b.dur || 0, b.min || 0);                // the action's own length, before the narration stretched it
+      b.dur = Math.max(b.dur || 0, b.speech + (m ? LEAD : 0) + (b.say ? pad : 0), b.min || 0.1);   // the clip's silent lead fits in its beat
       b.start = t; t += b.dur;
       if (m) b.file = `${audioDir}/${m.file}${audioQuery}`;   // re-voiced clips keep their names: never take them from the cache
     }
@@ -39,6 +50,9 @@ export class Timeline {
     this.scenes = Object.keys(this.sceneStarts).map(Number).sort((a, b) => a - b);
     this.T = 0; this.playing = false; this.events = []; this.listeners = [];
     this.voice = true; this.stopAt = null; this._done = null;   // training: narration off, play one step and stop
+    // training (author, 18 XI): the instructor's commands still sound (minus the keys in skipVoice: the command the
+    // question has just spoken), and beats stretched for a narration nobody hears run faster (fast)
+    this.commands = false; this.skipVoice = new Set(); this.fast = false;
   }
   sceneAt(T) { let s = this.scenes[0]; for (const n of this.scenes) if (this.sceneStarts[n] <= T + 1e-6) s = n; return s; }
   beatAt(T) { let cur = this.beats[0]; for (const b of this.beats) if (b.start <= T) cur = b; return cur; }
@@ -56,7 +70,7 @@ export class Timeline {
   // sounds: S.events holds {t, kind}; fire the ones crossed between prev and T (only while playing forwards)
   step(dt) {
     const prev = this.T;
-    if (this.playing) this.T = Math.min(this.total, this.T + dt * (window.__tlRate || 1));   /* __tlRate: test hook, faster playback */
+    if (this.playing) this.T = Math.min(this.total, this.T + dt * (window.__tlRate || 1) * (this.fast ? this.rateOf(this.beatAt(this.T)) : 1));   /* __tlRate: test hook, faster playback */
     if (this.stopAt != null && this.T >= this.stopAt) { this.T = this.stopAt; this.playing = false; this.stopAt = null; const d = this._done; this._done = null; d && d(); }
     if (this.T >= this.total) this.playing = false;
     this.syncAudio();
@@ -67,22 +81,32 @@ export class Timeline {
     const todo = this.beats.filter(b => b.file); let done = 0;
     await Promise.all(todo.map(async b => {
       const buf = await (await fetch(b.file)).arrayBuffer();
-      b.buffer = await this.ac.decodeAudioData(buf);
+      b.buffer = withLead(this.ac, await this.ac.decodeAudioData(buf)); b.speech = b.buffer.duration;
       onProgress && onProgress(++done / todo.length);
     }));
+  }
+  heard(b) { return !!b && (this.voice || (this.commands && b.speaker === "instructor" && !this.skipVoice.has(b.say))); }
+  // training pace: a beat as long as its narration is played up to 1.8x faster, but not under its own action length
+  // (or 3 s); a command already spoken by the question goes by in about a second; heard commands keep their pace
+  rateOf(b) {
+    if (!b || this.heard(b)) return 1;
+    if (b.speaker === "instructor") return Math.min(3, b.dur / 1.0);
+    return Math.max(1, Math.min(1.8, b.dur / Math.max(b.dur0, 3.0)));
   }
   stopVoice() { if (this.src) { try { this.src.node.stop(); } catch (e) { } this.src = null; } }
   syncAudio() {
     const b = this.beatAt(this.T), off = this.T - (b ? b.start : 0);
-    const want = this.voice && this.playing && b && b.buffer && off >= 0 && off < b.speech ? b : null;
+    const want = this.heard(b) && this.playing && b.buffer && off >= 0 && off < b.speech + START_SLACK ? b : null;
     if (!want) { this.stopVoice(); return; }
     if (this.src && this.src.beat === want) {         // keep it, unless it drifted from the timeline
       const played = this.ac.currentTime - this.src.t0 + this.src.off;
       if (Math.abs(played - off) < 0.25) return;
     }
     this.stopVoice();
+    // a clip entered late by a frame or two plays from its start (behind by that much: within the drift tolerance)
+    const fresh = off < START_SLACK && !(this.src && this.src.beat === want), from = fresh ? 0 : off;
     const node = this.ac.createBufferSource(); node.buffer = want.buffer; node.connect(this.out);
-    node.start(0, off); this.src = { beat: want, node, t0: this.ac.currentTime, off };
+    node.start(0, from); this.src = { beat: want, node, t0: this.ac.currentTime - (off - from), off: from };
   }
   seek(T) { this.T = Math.max(0, Math.min(this.total, T)); this.stopVoice(); this.syncAudio(); }
   play() { this.ac.resume(); if (this.T >= this.total - 0.05) this.T = 0; this.playing = true; this.syncAudio(); }
@@ -117,10 +141,13 @@ const CSS = `
 #demoPanel .vol { display: flex; align-items: center; gap: 4px; }
 #demoPanel .vol input[type=range] { flex: none; width: 90px; min-width: 0; }
 #lessonSide { position: fixed; top: 0; right: 0; bottom: 64px; width: 300px; max-width: 86vw; z-index: 85; background: rgba(12,14,16,.9); color: #eee;
-  font: 14px system-ui, sans-serif; padding: 56px 14px 14px; box-sizing: border-box; overflow-y: auto; transform: translateX(100%); transition: transform .2s; }
+  font: 14px system-ui, sans-serif; padding: 56px 14px 14px; box-sizing: border-box; transform: translateX(100%); transition: transform .2s;
+  display: flex; flex-direction: column; }   /* only the chapter list scrolls; the tasks stay at the bottom edge */
+#lessonSide .list { flex: 1; min-height: 0; overflow-y: auto; }
+#lessonSide .foot { flex: none; padding-top: 4px; border-top: 1px solid #333; }
 #lessonSide.open { transform: none; }
 #lessonSide h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #aaa; }
-#lessonSide h3.gap { margin-top: 18px; }
+#lessonSide h3.gap { margin-top: 10px; }
 #lessonSide .lesson { font-weight: 600; color: #f2c94c; margin: 4px 0 8px; }
 #lessonSide button { display: block; width: 100%; text-align: left; background: none; color: #ddd; border: 0; border-radius: 4px; padding: 6px 8px; font: inherit; cursor: pointer; }
 #lessonSide button:hover { background: #2a2e33; }
@@ -135,6 +162,9 @@ const CSS = `
 #startVeil { position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; background: rgba(0,0,0,.35); }
 #startVeil button { background: #f2c94c; color: #111; border: 0; border-radius: 10px; padding: 18px 42px; font: 700 24px system-ui; cursor: pointer;
   box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+#startVeil .tasks { display: flex; gap: 12px; justify-content: center; margin-top: 14px; }
+#startVeil .tasks button { background: rgba(12,14,16,.85); color: #f2c94c; border: 2px solid #f2c94c; padding: 10px 26px; font: 600 18px system-ui; }
+#startVeil .tasks button:hover { background: #f2c94c; color: #111; }
 #startVeil .t { color: #fff; font: 600 18px system-ui; text-align: center; margin-bottom: 18px; text-shadow: 0 2px 6px #000; }
 #demoSub.instr { color: #ffd84d; font-weight: 700; }
 #demoSub:empty { display: none; }
@@ -180,16 +210,19 @@ export function makePanel(tl, { onToggleLabels, onCamMode, title, lesson = title
   row2.append(start, prev, ...scnBtns, next, playB, slider, time, vol, subB, labB, camB, fsB);
   // side panel: the lesson (the whole scenario) with its chapters, and the tasks
   const side = document.createElement("div"); side.id = "lessonSide";
-  const tog = document.createElement("button"); tog.id = "sideToggle"; tog.textContent = "☰"; tog.title = "Lekcje i zadania";
+  const tog = document.createElement("button"); tog.id = "sideToggle"; tog.textContent = "✕"; tog.title = "Lekcje i zadania";
+  side.classList.add("open");                                    // open by default (author, 18 XI)
   tog.onclick = () => { side.classList.toggle("open"); tog.textContent = side.classList.contains("open") ? "✕" : "☰"; };
-  side.innerHTML = `<h3>Lekcje</h3><div class="lesson">1. ${lesson}</div>`;
+  const list = document.createElement("div"); list.className = "list";
+  list.innerHTML = `<h3>Lekcje</h3><div class="lesson">1. ${lesson}</div>`;
   const chBtns = tl.scenes.map(n => { const b = document.createElement("button"); b.innerHTML = `<span class="n">${n}</span>${tl.sceneTitles[n] || ""}`;
-    b.title = "Rozdział " + n; b.onclick = () => { tl.seek(tl.sceneStarts[n] + 0.001); tl.play(); }; side.append(b); return b; });
+    b.title = "Rozdział " + n; b.onclick = () => { tl.seek(tl.sceneStarts[n] + 0.001); tl.play(); }; list.append(b); return b; });
   const th = document.createElement("h3"); th.className = "gap"; th.textContent = "Zadania";
   const tasks = document.createElement("div"); tasks.className = "tasks";
   for (const [k, t, h] of [["train", "Trening", "Samodzielne wykonanie kolejnych czynności"], ["exam", "Egzamin", "Na czas, bez podpowiedzi"]]) {
     const b = document.createElement("button"); b.textContent = t; b.title = onTask ? h : h + " (wkrótce)"; b.disabled = !onTask; b.onclick = () => onTask && onTask(k); tasks.append(b); }
-  side.append(th, tasks);
+  const foot = document.createElement("div"); foot.className = "foot"; foot.append(th, tasks);
+  side.append(list, foot);
   document.body.append(side, tog);
   p.append(row1, row2);
   function go(d) {
@@ -272,9 +305,12 @@ export function sounds() {
 }
 
 // big "Rozpocznij" in the middle: browsers allow sound only after a click, so the scene starts on it
-export function startGate(title, onStart) {
+// onTask(kind): optional, adds Trening and Egzamin under the start button (author, 18 XI)
+export function startGate(title, onStart, onTask) {
   const v = document.createElement("div"); v.id = "startVeil";
-  v.innerHTML = `<div><div class="t">${title}</div><div style="text-align:center"><button>▶ Rozpocznij</button></div></div>`;
-  v.querySelector("button").onclick = () => { v.remove(); onStart(); };
+  v.innerHTML = `<div><div class="t">${title}</div><div style="text-align:center"><button class="go">▶ Rozpocznij</button></div>` +
+    (onTask ? `<div class="tasks"><button data-k="train" title="Samodzielne wykonanie kolejnych czynności">Trening</button><button data-k="exam" title="Na czas, bez podpowiedzi">Egzamin</button></div>` : "") + `</div>`;
+  v.querySelector("button.go").onclick = () => { v.remove(); onStart(); };
+  v.querySelectorAll(".tasks button").forEach(b => b.onclick = () => { v.remove(); onTask(b.dataset.k); });
   document.body.append(v); return v;
 }

@@ -2,11 +2,35 @@
 // own settings. Tables: ballistics_table.json (tools/weapons/ballistics_tables.py).
 // Conventions as in scene1.js: dial.wind > 0 = correction to the left; x > 0 = right of the gong centre, y > 0 = up.
 
-export const VIEW_CONDITIONS = { range: 625, wind: 3.0, windFrom: 9 };
+export const VIEW_CONDITIONS = { range: 625, wind: 3.0, windFrom: 9, hour: 10, weather: "clear" };
 
+// weather: "clear", "drizzle" (light rain under cloud), "mist" (the gong still in sight, paler) or now and then "snow"
+// (a little snow on the fields, light snowfall)
+export const WEATHER = { clear: "pogodnie", drizzle: "drobny deszcz", mist: "lekka mgła", snow: "lekki śnieg" };
+// the ballistic tables are for this air; other temperature and pressure need a correction (author, 18 XI)
+export const TABLE_ATM = { temp: 15, pressure: 1010 };
+
+// hour: daylight of the scene's season (September sun), 7:30-17:00 in 5-minute steps;
+// temperature [deg C] and pressure [hPa] to suit the weather
 export function rollConditions(rng = Math.random) {
-  return { range: 300 + Math.floor(rng() * 601), wind: (20 + Math.floor(rng() * 31)) / 10, windFrom: rng() < 0.5 ? 9 : 3 };
+  const range = 300 + Math.floor(rng() * 601), wind = (20 + Math.floor(rng() * 31)) / 10, windFrom = rng() < 0.5 ? 9 : 3;
+  const hour = 7.5 + Math.floor(rng() * 115) * 5 / 60, w = rng();
+  const weather = w < 0.43 ? "clear" : w < 0.65 ? "drizzle" : w < 0.88 ? "mist" : "snow";
+  const span = (a, b, step = 1) => a + Math.floor(rng() * ((b - a) / step + 1)) * step;
+  const [t0, t1, p0, p1] = { clear: [5, 24, 1000, 1030], drizzle: [4, 14, 990, 1010], mist: [0, 10, 1008, 1030], snow: [-6, 0, 1000, 1035] }[weather];
+  return { range, wind, windFrom, hour, weather, temp: span(t0 * 2, t1 * 2) / 2, pressure: span(p0, p1) };
 }
+
+// air density relative to the tables' air (dry air: pressure over absolute temperature)
+export const densityRatio = c => ((c.pressure ?? TABLE_ATM.pressure) / TABLE_ATM.pressure) * ((273.15 + TABLE_ATM.temp) / (273.15 + (c.temp ?? TABLE_ATM.temp)));
+// the air of c at range d: the time the bullet loses to drag (time of flight over the vacuum time) grows with the
+// density; the drop goes with the square of the time of flight, the wind drift with the lost time
+export function atmK(c, tab, d) {
+  const r = rowAt(tab, d), rho = densityRatio(c); if (!r[1]) return { drop: 1, drift: rho, tof: 0 };
+  const v0 = tab.rows[1][0] / tab.rows[1][1], tv = d / v0, tof = tv + (r[1] - tv) * rho;
+  return { drop: (tof / r[1]) ** 2, drift: rho, tof };
+}
+export const hourText = h => `${String(Math.floor(h)).padStart(2, "0")}:${String(Math.round(h % 1 * 60)).padStart(2, "0")}`;
 
 // [range, time, drop, drift per 1 m/s] at any range (linear between the 5 m rows)
 export function rowAt(tab, d) {
@@ -17,13 +41,13 @@ export function rowAt(tab, d) {
 
 // the exact settings for c (what the tables give when read without rounding)
 export function tableDope(c, tab) {
-  const r = rowAt(tab, c.range), side = c.windFrom === 9 ? 1 : -1;
-  return { elev: r[2] / c.range * 1000, wind: side * r[3] * c.wind / c.range * 1000 };
+  const r = rowAt(tab, c.range), side = c.windFrom === 9 ? 1 : -1, k = atmK(c, tab, c.range);
+  return { elev: r[2] * k.drop / c.range * 1000, wind: side * r[3] * k.drift * c.wind / c.range * 1000 };
 }
 
 // disp: [right, up] in mrad, the shot's own dispersion
 export function impactFor(c, dial, disp, tab) {
-  const r = rowAt(tab, c.range), k = c.range / 1000, side = c.windFrom === 9 ? 1 : -1;
-  const y = -r[2] + (dial.elev + disp[1]) * k, x = side * r[3] * c.wind - (dial.wind - disp[0]) * k;
-  return { x, y, hit: Math.abs(x) <= 0.25 && Math.abs(y) <= 0.5, tof: r[1] };
+  const r = rowAt(tab, c.range), k = c.range / 1000, side = c.windFrom === 9 ? 1 : -1, a = atmK(c, tab, c.range);
+  const y = -r[2] * a.drop + (dial.elev + disp[1]) * k, x = side * r[3] * a.drift * c.wind - (dial.wind - disp[0]) * k;
+  return { x, y, hit: Math.abs(x) <= 0.25 && Math.abs(y) <= 0.5, tof: a.tof };
 }

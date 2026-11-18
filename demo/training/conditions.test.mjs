@@ -13,12 +13,24 @@ test("rolled conditions stay in range", () => {
     assert.ok(Number.isInteger(c.range) && c.range >= 300 && c.range <= 900, JSON.stringify(c));
     assert.ok(c.wind >= 2 && c.wind <= 5 && Math.abs(c.wind * 10 - Math.round(c.wind * 10)) < 1e-9, JSON.stringify(c));
     assert.ok(c.windFrom === 9 || c.windFrom === 3);
+    assert.ok(c.hour >= 7.5 && c.hour <= 17.01, JSON.stringify(c));
+    assert.ok(["clear", "drizzle", "mist", "snow"].includes(c.weather), JSON.stringify(c));
+    assert.ok(c.temp >= -6 && c.temp <= 24 && c.pressure >= 990 && c.pressure <= 1035, JSON.stringify(c));
+    if (c.weather === "snow") assert.ok(c.temp <= 0, JSON.stringify(c));
   }
 });
 
 test("the view conditions and their settings hit", () => {
-  assert.deepEqual(VIEW_CONDITIONS, { range: 625, wind: 3.0, windFrom: 9 });
+  assert.deepEqual(VIEW_CONDITIONS, { range: 625, wind: 3.0, windFrom: 9, hour: 10, weather: "clear" });
   assert.equal(impactFor(VIEW_CONDITIONS, { elev: 6.45, wind: 1.56 }, [0, 0], tab).hit, true);
+});
+
+test("cold dense air drops more than the tables (15 C, 1010 hPa) and needs more elevation", () => {
+  const std = { range: 900, wind: 3, windFrom: 9 }, cold = { ...std, temp: -6, pressure: 1035 };
+  const a = tableDope(std, tab), b = tableDope(cold, tab);
+  assert.ok(b.elev > a.elev * 1.04 && b.elev < a.elev * 1.2, `${a.elev} -> ${b.elev}`);
+  assert.equal(impactFor(cold, a, [0, 0], tab).y < 0, true);              // the table settings fall short in the cold
+  assert.equal(impactFor(cold, b, [0, 0], tab).hit, true);
 });
 
 test("wind dialled the wrong way misses", () => {

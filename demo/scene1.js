@@ -19,8 +19,8 @@ let running = false;
 export async function play(ctx) {
   // helper modules load with the same version tag as this file, so an edited helper is never served from the cache
   const ver = new URL(import.meta.url).search;
-  const [{ Timeline, makePanel, overlayLayer, sounds, startGate }, { makeRig }, { makeSordin, makeKestrel }, { makeHands, makeGloves }] =
-    await Promise.all(["engine", "rig", "props", "hands"].map(n => import(`./${n}.js${ver}`)));
+  const [{ Timeline, makePanel, overlayLayer, sounds, startGate }, { makeRig }, { makeSordin, makeKestrel }, { makeHands, makeGloves }, { makeCollision, makeSoldierSolver }] =
+    await Promise.all(["engine", "rig", "props", "hands", "collide"].map(n => import(`./${n}.js${ver}`)));
   if (running) return; running = true;
   const { THREE, scene, camera, hAt, meta, FIRE, gltf, clips, SkeletonUtils, GLTFLoader } = ctx;
   const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -153,6 +153,10 @@ export async function play(ctx) {
   const RP = { bipodF: node("bipod_folded"), bipodD: node("bipod_deployed"), ch: node("charging_handle"), dust: node("dust_cover"), mag: node("magazine"),
     sel: node("safety_selector"), bolt: node("bolt_carrier") };
   const chRest = RP.ch.position.clone(), boltRest = RP.bolt.position.clone(), selRest = RP.sel.quaternion.clone();
+  // the selector is two-sided (one lever each side of the receiver): the right thumb works the right lever, by its
+  // upper rear tab (rifle-local, measured on the mesh in the Z position), kept in the lever's frame so it turns with it
+  rifle.updateMatrixWorld(true); const SEL_TAB = RP.sel.worldToLocal(rifle.localToWorld(V(0.021, -0.025, -0.335)));
+  const THUMB_REST_TIP = V(0.042, 0.009, -0.341);                 // rifle-local: the thumb along the right of the receiver
   const KN = { elev: node("scope_elevation"), wind: node("scope_windage"), plx: node("scope_parallax") };
   const knRest = Object.fromEntries(Object.entries(KN).map(([k, o]) => [k, o ? o.quaternion.clone() : null]));
   // turret scales read at the index (author, 18 XI): from the engraved mesh itself (uv u = angle) find how u maps to the
@@ -240,10 +244,45 @@ export async function play(ctx) {
       drawLcd = () => { x.fillStyle = "#b9c3a8"; x.fillRect(0, 0, 360, 230); x.fillStyle = "#1b241b";
         x.font = "bold 26px monospace"; x.fillText("WIND SPEED", 20, 40);
         x.font = "bold 92px monospace"; x.fillText(COND.wind.toFixed(1), 20, 140); x.font = "bold 40px monospace"; x.fillText("m/s", 225, 140);
-        x.font = "bold 26px monospace"; x.fillText(`DIR ${COND.windFrom}:00   8.0\u00b0C`, 20, 200); t.needsUpdate = true; };
+        x.font = "bold 26px monospace"; x.fillText(`DIR ${COND.windFrom}:00  ${(COND.temp ?? 8).toFixed(1)}\u00b0C`, 20, 200); t.needsUpdate = true; };
       drawLcd();
       o.material = o.material.clone(); o.material.map = t; o.material.emissiveMap = null; o.material.emissive.set(0x000000); } } });
+  // the Kestrel in the bottom left corner of the screen during the training (author, 18 XI: the 3D model, not a
+  // drawing): a copy of the bought model in its own small scene, its display showing the attempt's weather and wind,
+  // the vane turning with the wind; drawn over the frame in a scissored viewport (__renderOverride), with no background of its own
+  const kesInset = (() => {
+    const sc = new THREE.Scene(), model = kesG.scene.clone(true); model.rotation.set(0, -Math.PI / 2, 0); sc.add(model);
+    sc.add(new THREE.AmbientLight(0xffffff, 1.4)); const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(1.5, 2, 3); sc.add(key);
+    const c = document.createElement("canvas"); c.width = 360; c.height = 230; const x = c.getContext("2d");
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.flipY = false;
+    model.traverse(o => { if (o.isMesh && o.material.name === "kestrel5700x_lcd") { o.material = o.material.clone(); o.material.map = tex; o.material.emissiveMap = null; o.material.emissive.set(0x000000); } });
+    const fan = model.getObjectByName("kestrel5700x_fan");
+    const box = new THREE.Box3().setFromObject(model), ctr = box.getCenter(V()), size = box.getSize(V());
+    // the top of the device: the vane with its open cover and the display (the keypad below stays out of the frame);
+    // 30 % larger than first built, so the display reads (author, 18 XI)
+    const W = 286, H = 325, cam = new THREE.PerspectiveCamera(24, W / H, 0.01, 10), th = Math.tan(12 * Math.PI / 180);
+    const y0 = box.min.y + size.y * 0.36, look = V(ctr.x, (y0 + box.max.y) / 2, ctr.z), hh = box.max.y - y0;
+    const dist = Math.max(hh / 2 / th, size.x / 2 / (th * W / H)) * 1.06 + size.z / 2;
+    cam.position.copy(look).add(V(0, 0.08, 1).normalize().multiplyScalar(dist)); cam.lookAt(look);
+    let cond = null, t0 = performance.now();
+    // four lines in the part of the texture the screen shows (the top ~70 %)
+    const draw = c_ => { x.fillStyle = "#b9c3a8"; x.fillRect(0, 0, 360, 230); x.fillStyle = "#1b241b"; x.font = "bold 31px monospace";
+      const f1_ = v => v.toFixed(1).replace(".", ",");
+      [`TEMP ${f1_(c_.temp ?? 15).padStart(5)} C`, `BARO ${String(c_.pressure ?? 1010).padStart(5)}`, `WIND ${f1_(c_.wind).padStart(5)}`, `DIR  ${c_.windFrom}:00`]
+        .forEach((l, i) => x.fillText(l, 14, 31 + i * 34)); tex.needsUpdate = true; };
+    return {
+      set(c_) { cond = c_; if (c_) draw(c_); },
+      render(r) { if (!cond) return;
+        const now = performance.now(); if (fan) fan.rotation.x += (now - t0) / 1000 * cond.wind * 5; t0 = now;
+        const L = 14, B = 112, cc = r.getClearColor(new THREE.Color()), ca = r.getClearAlpha(), ac = r.autoClear;
+        r.setScissorTest(true); r.setScissor(L, B, W, H); r.setViewport(L, B, W, H); r.clearDepth();   // no background: the device stands over the frame
+        r.autoClear = false; r.render(sc, cam); r.autoClear = ac;
+        r.setScissorTest(false); r.setViewport(0, 0, innerWidth, innerHeight); r.setClearColor(cc, ca); } };
+  })();
   const magProp = RP.mag.clone(); magProp.name = "magazine_hand"; scene.add(magProp);
+  // held in the hand, the black magazine was hidden in the glove (author, 18 XI): it sits half its height higher,
+  // along its own long axis, so half of it shows above the hand
+  const MAG_RAISE = (() => { RP.mag.geometry.computeBoundingBox(); return RP.mag.geometry.boundingBox.getSize(V()).y * RP.mag.getWorldScale(V()).y / 2; })();
   const rounds = []; for (let i = 0; i < 3; i++) { const r = new THREE.Group(); const cs = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.051, 10), new THREE.MeshStandardMaterial({ color: 0xc8a050, metalness: 0.8, roughness: 0.3 })); const bl = new THREE.Mesh(new THREE.ConeGeometry(0.0039, 0.022, 10), new THREE.MeshStandardMaterial({ color: 0xb06a3a, metalness: 0.8, roughness: 0.3 })); bl.position.y = 0.036; r.add(cs, bl); scene.add(r); rounds.push(r); }
   const caseEject = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.051, 8), new THREE.MeshStandardMaterial({ color: 0xc8a050, metalness: 0.8, roughness: 0.3 })); scene.add(caseEject);
 
@@ -361,6 +400,12 @@ export async function play(ctx) {
   // the instructor has no hood: a smaller head, cups higher over the ears, band over the crown (author, 18 XI)
   const instEars = (() => { const h = makeSordin(THREE, window.__earTune || { earX: 0.074, earY: 0.105, apexY: 0.302 }); inst.rig.B.Head.add(h); return h; })();
   const handsMan = makeGloves(THREE, man, gloveG.scene, { clone: SkeletonUtils.clone }), handsInst = makeGloves(THREE, inst, gloveG.scene, { clone: SkeletonUtils.clone });
+  // collision (collide.js, trial): obstacles for the hands are the rifle, the hand-held magazine and the rear bag;
+  // the Kestrel is placed from the fingertips, so it is not one. window.__collideOff switches it all off
+  const COL = (() => { const c = makeCollision(THREE, { hAt }), flat = o => o.material && o.material.type === "MeshBasicMaterial";
+    return Object.assign(c, { solids: [c.solid(rifle, { skip: flat, name: "rifle", rootVisible: false }), c.solid(magProp, { name: "mag" }), c.solid(bag, { name: "bag" })],
+      rifleSamples: c.rigidSamples(rifle), magSamples: c.rigidSamples(magProp), kesSamples: c.rigidSamples(kestrel), noteSamples: c.rigidSamples(notebook),
+      man: makeSoldierSolver(THREE, c, man, handsMan), inst: makeSoldierSolver(THREE, c, inst, handsInst) }); })();
 
   // measure poses once: where the eye (headfront) sits in the prone pose, relative to the root
   const headfront = man.m.getObjectByName("headfront");
@@ -461,14 +506,17 @@ export async function play(ctx) {
   const capMove = (S, side, u) => {
     S.man.R = u < 0.35 ? { from: "grip", to: "cap" + side, k: ease(seg(u, 0, 0.35)) } : u < 0.65 ? "cap" + side : { from: "cap" + side, to: "grip", k: ease(seg(u, 0.65, 1)) };
     S.rifle["cap" + side] = seg(u, 0.38, 0.62); };
-  B(5, "s05.caps", (S, u) => { kneelWork(S); S.rifle.boltOpen = true;
+  // scene 5, kneeling beside the rifle (author, 18 XI): the handguard is 65-75 cm away, out of reach, so the stretched
+  // left arm hung over the scope. The left forearm rests on the raised left knee instead (soldier-local, x to his left)
+  const KNEE_REST = { man: [window.__kr || [0.22, 0.55, 0.45], window.__krK || [0.20, 0.50, 0.55]] };
+  B(5, "s05.caps", (S, u) => { kneelWork(S); S.man.L = KNEE_REST; S.rifle.boltOpen = true;
     if (u < 0.5) capMove(S, "F", u * 2); else { S.rifle.capF = "ground"; capMove(S, "R", (u - 0.5) * 2); }
     S.cam = { kind: "rifle", pos: [0.50, 0.10, -0.55], look: [0.03, 0.06, -0.40], near: true, fov: 42 }; });
   const capsOff = S => { kneelWork(S); S.rifle.boltOpen = true; S.rifle.capF = S.rifle.capR = "ground"; };
-  B(5, "s05.turrets", (S, u) => { capsOff(S); S.man.R = "elev"; S.cam = { kind: "rifle", pos: [0.46, 0.16, -0.50], look: [0, 0.11, -0.41], near: true, fov: 40 }; });
-  B(5, "s05.elev", (S, u) => { capsOff(S); S.man.R = "elev"; S.rifle.elev = lerp(0.8, 0, ease(seg(u, 0.35, 0.8)));
+  B(5, "s05.turrets", (S, u) => { capsOff(S); S.man.L = KNEE_REST; S.man.R = "elev"; S.cam = { kind: "rifle", pos: [0.46, 0.16, -0.50], look: [0, 0.11, -0.41], near: true, fov: 40 }; });
+  B(5, "s05.elev", (S, u) => { capsOff(S); S.man.L = KNEE_REST; S.man.R = "elev"; S.rifle.elev = lerp(0.8, 0, ease(seg(u, 0.35, 0.8)));
     S.cam = { kind: "rifle", pos: [0.06, 0.24, -0.62], look: [0, 0.12, -0.41], near: true, fov: 34 }; S.ov.dial = turretDialAt("6%", "18%", "Bęben wysokości", S.rifle.elev, 0, 10, "mrad"); });
-  B(5, "s05.wind", (S, u) => { capsOff(S); S.rifle.elev = 0; S.man.R = "windage"; S.rifle.wind = lerp(-0.2, 0, ease(seg(u, 0.3, 0.7)));
+  B(5, "s05.wind", (S, u) => { capsOff(S); S.man.L = KNEE_REST; S.rifle.elev = 0; S.man.R = "windage"; S.rifle.wind = lerp(-0.2, 0, ease(seg(u, 0.3, 0.7)));
     S.cam = { kind: "rifle", pos: [0.16, 0.13, -0.62], look: [0.03, 0.088, -0.41], near: true, fov: 34 }; S.ov.dial = turretDialAt("6%", "18%", "Bęben poprawek bocznych", -S.rifle.wind, -5, 10, "mrad"); });
   // 6 prone behind the rifle (still unloaded, action open)
   const ready = S => { onGround(S); S.rifle.boltOpen = true; S.rifle.capF = S.rifle.capR = "ground"; S.rifle.elev = 0; S.rifle.wind = 0; };
@@ -649,7 +697,7 @@ export async function play(ctx) {
   const losDir = GC.clone().sub(RL(EYE)).normalize(), losRight = losDir.clone().cross(up).normalize(), losUp = losRight.clone().cross(losDir).normalize();
   function pathAt(d, n) {
     let i = rows.findIndex(r => r[0] >= d); if (i < 0) i = rows.length - 1; if (i < 1) i = 1;   /* past the table: extrapolate from its last rows */ const a = rows[i - 1], b = rows[i], f = (d - a[0]) / Math.max(1e-6, b[0] - a[0]);
-    const h = a[2] + (b[2] - a[2]) * f + ELEV * d / 1000 + DISP[n][1] * d / 1000, w = a[3] + (b[3] - a[3]) * f - WIND * d / 1000 + DISP[n][0] * d / 1000;
+    const h = a[2] + (b[2] - a[2]) * f + ELEV * d / 1000 + (DISP[n][1] + AIM[n][1]) * d / 1000, w = a[3] + (b[3] - a[3]) * f - WIND * d / 1000 + (DISP[n][0] + AIM[n][0]) * d / 1000;
     return RL(EYE).addScaledVector(losDir, d).addScaledVector(losUp, h).addScaledVector(losRight, w);
   }
   function rangeAtTime(t) { let i = rows.findIndex(r => r[1] >= t); if (i < 1) i = 1; const a = rows[i - 1], b = rows[i]; return a[0] + (b[0] - a[0]) * (t - a[1]) / Math.max(1e-6, b[1] - a[1]); }
@@ -681,28 +729,78 @@ export async function play(ctx) {
   let TAB = null; const windDir0 = ctx.windDirU ? ctx.windDirU.value.clone() : null;
   async function setConditions(c, view = false) {
     if (!TAB) TAB = await fetch("demo/ballistics_table.json" + ver).then(r => r.json());
-    const { tableDope, rowAt } = await import("./training/conditions.js" + ver);
-    COND = { ...c }; RANGE = c.range;
+    const { tableDope, rowAt, atmK } = await import("./training/conditions.js" + ver);
+    COND = { ...c }; RANGE = c.range; AIM.forEach(a => { a[0] = 0; a[1] = 0; });   // a new attempt: no aim errors yet
     gongBase.copy(W(RANGE, 0)); gong.position.copy(gongBase); gong.updateMatrixWorld(true); GC.copy(gong.localToWorld(V(0, 1.13, 0)));
     losDir.copy(GC).sub(RL(EYE)).normalize(); losRight.copy(losDir).cross(up).normalize(); losUp.copy(losRight).cross(losDir).normalize();
     if (view) { rows = BAL.rows; ELEV = 6.5; WIND = 1.6; TOF = BAL.tof; PLX_SET = 600; }
     else { const side = c.windFrom === 9 ? 1 : -1, d = tableDope(c, TAB);
-      rows = TAB.rows.map(r => [r[0], r[1], -r[2], side * r[3] * c.wind]); ELEV = d.elev; WIND = d.wind; TOF = rowAt(TAB, RANGE)[1]; PLX_SET = RANGE; }
+      // the flight in the attempt's air (temperature, pressure): drop and drift grow in denser air
+      rows = TAB.rows.map(r => { const k = atmK(c, TAB, r[0]); return [r[0], k.tof || r[1], -r[2] * k.drop, side * r[3] * k.drift * c.wind]; });
+      ELEV = d.elev; WIND = d.wind; TOF = atmK(c, TAB, RANGE).tof; PLX_SET = RANGE; }
     SOUND_BACK = RANGE / SOUND; ARC = arcOf(); marksDrawn = -1; drawLcd();
     if (windDir0) ctx.windDirU.value.copy(windDir0).multiplyScalar(c.windFrom === 9 ? 1 : -1);
+    // time of day and weather of the attempt (author, 18 XI); the view conditions: 10:00, clear
+    if (window.__sim && window.__sim.setHour) window.__sim.setHour(c.hour ?? 10, 8);
+    if (window.__sim && window.__sim.setWeather) window.__sim.setWeather(c.weather || "clear", RANGE);
   }
   const setDial = d => { ELEV = d.elev; WIND = d.wind; ARC = arcOf(); };       // the student's own settings (wind > 0 = left)
   const setQuiz = on => { QUIZ = !!on; };
+  // measuring in the reticle in the training and the exam (author, 18 XI): with the left button held, the mouse turns the
+  // scope a little (+-6 mrad), so the reticle can be laid on the target. Grab-and-pull: the picture follows the mouse
+  let SCOPE_DRAG_MAX = 6; const dragEl = ctx.renderer.domElement;
+  let scopeDrag = null;
+  // max: the reach in mrad (6 to lay the reticle for a measurement, more to search the ground for the target)
+  const setScopeDrag = (on, { max = 6 } = {}) => { SCOPE_DRAG_MAX = max; scopeDrag = on ? { yaw: 0, pitch: 0, down: null } : null; dragEl.style.cursor = on ? "grab" : ""; };
+  // where the reticle points, mrad from the gong's centre (the scope's own aim plus the trainee's), and the gong's
+  // half width and half height in mrad at the current range
+  let scopeAim = [0, 0];
+  const aimOnGong = () => ({ yaw: scopeAim[0], pitch: scopeAim[1], hw: 250 / RANGE, hh: 500 / RANGE });
+  dragEl.addEventListener("pointerdown", e => { if (!scopeDrag || e.button !== 0) return; scopeDrag.down = [e.clientX, e.clientY, scopeDrag.yaw, scopeDrag.pitch];
+    dragEl.setPointerCapture(e.pointerId); dragEl.style.cursor = "grabbing"; e.preventDefault(); });
+  dragEl.addEventListener("pointermove", e => { if (!scopeDrag || !scopeDrag.down) return; const [x0, y0, yw, pt] = scopeDrag.down;
+    const mpp = camera.fov * Math.PI / 180 * 1000 / dragEl.clientHeight, cl = v => Math.max(-SCOPE_DRAG_MAX, Math.min(SCOPE_DRAG_MAX, v));
+    scopeDrag.yaw = cl(yw - (e.clientX - x0) * mpp); scopeDrag.pitch = cl(pt + (e.clientY - y0) * mpp); });
+  const dragEnd = () => { if (scopeDrag) { scopeDrag.down = null; dragEl.style.cursor = "grab"; } };
+  dragEl.addEventListener("pointerup", dragEnd); dragEl.addEventListener("pointercancel", dragEnd);
   const onPlate = ([x, y]) => Math.abs(x) <= 0.25 && Math.abs(y) <= 0.5;
   // miss: a puff of sand on the ground where the path meets it behind (or before) the gong
-  const puff = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshLambertMaterial({ color: 0xc9b48a, transparent: true, depthWrite: false }));
-  puff.visible = false; scene.add(puff); const puffs = [];
+  // a miss hitting the ground (author, 18 XI: it looked like a grenade): sand grains thrown up to about 1 m and falling
+  // back, each on its own ballistic path from a fixed seed (so scrubbing shows the same splash); points in pixels, so
+  // the splash still reads in the scope at 900 m
+  const GRAINS = 180, grainV = [], puffPos = new Float32Array(GRAINS * 3);
+  { let r = 11; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < GRAINS; i++) { const a = rnd() * Math.PI * 2, h = 0.4 + rnd() * 1.6;   // most grains low, a few up to ~1 m
+      grainV.push([Math.cos(a) * h * (0.1 + rnd() * 0.2), 1.4 + rnd() * 3.0, Math.sin(a) * h * (0.1 + rnd() * 0.2)]); } }   // <= 4.4 m/s up: ~1 m high, ~1 m across
+  const puffGeo = new THREE.BufferGeometry(); puffGeo.setAttribute("position", new THREE.BufferAttribute(puffPos, 3));
+  const puff = new THREE.Points(puffGeo, new THREE.PointsMaterial({ color: 0xb59c70, size: 2.2, sizeAttenuation: false, transparent: true, depthWrite: false }));
+  puff.frustumCulled = false; puff.visible = false; scene.add(puff); const puffs = [];
   function puffAt(n, tau) {
     let d = RANGE, p = pathAt(d, n); for (let i = 0; i < 400 && p.y > hAt(p.x, p.z); i++) { d += 1; p = pathAt(d, n); }
     if (d === RANGE) for (let i = 0; i < 300 && p.y < hAt(p.x, p.z); i++) { d -= 1; p = pathAt(d, n); }
     puffs.push([p, tau]); }
-  function drawPuffs() { const pf = puffs.pop(); puffs.length = 0; puff.visible = !!pf && pf[1] < 3;
-    if (puff.visible) { const k = pf[1]; puff.position.copy(pf[0]).add(V(0, 0.4 + k * 0.5, 0)); puff.scale.set(0.5 + k * 0.9, 0.5 + k * 0.6, 0.5 + k * 0.9); puff.material.opacity = 0.85 * (1 - k / 3); } }
+  function drawPuffs() { const pf = puffs.pop(); puffs.length = 0; puff.visible = !!pf && pf[1] < 1.6;
+    if (!puff.visible) return;
+    const t = pf[1], g = pf[0]; puff.position.copy(g);
+    for (let i = 0; i < GRAINS; i++) { const v = grainV[i], x = v[0] * t, z = v[2] * t, y = Math.max(0, v[1] * t - 4.905 * t * t);   // on the ground once fallen
+      puffPos[i * 3] = x; puffPos[i * 3 + 1] = y + hAt(g.x + x, g.z + z) - g.y; puffPos[i * 3 + 2] = z; }
+    puffGeo.attributes.position.needsUpdate = true; puff.material.opacity = t < 1.0 ? 0.95 : 0.95 * (1 - (t - 1.0) / 0.6); }
+  // aim error of each shot (mrad, right / up): where the swaying reticle was when the trainee fired (training)
+  const AIM = [[0, 0], [0, 0], [0, 0]];
+  // the reticle while the trainee holds the shot (author, 18 XI): about 3.5 s of breathing, a faster and wider sway, then
+  // a ~3 s pause in which it slows down and nearly stops; over and over. Real time, the timeline stands still meanwhile
+  let sway = null;
+  const setAimSway = on => { sway = on ? { last: performance.now(), t: 0, ph: [0, 0, 0, 0] } : null; };
+  function aimNow() {
+    if (!sway) return [0, 0];
+    const now = performance.now(), dt = Math.min(0.1, (now - sway.last) / 1000); sway.last = now; sway.t += dt;
+    const c = sway.t % 6.5, breathing = c < 3.5, e = breathing ? Math.min(1, c / 0.6, (3.5 - c) / 0.6 + 0.12) : 0.12 + 0.08 * Math.max(0, 1 - (c - 3.5) / 0.8);
+    const sp = 0.35 + 0.65 * Math.min(1, e);                   // slower in the pause too, not just smaller
+    [1 / 1.7, 1 / 0.9, 1 / 2.3, 1 / 1.1].forEach((f, i) => sway.ph[i] += 2 * Math.PI * f * dt * sp);
+    const A = 0.9 * e;
+    return [A * (0.6 * Math.sin(sway.ph[0]) + 0.25 * Math.sin(sway.ph[1])), A * (0.8 * Math.sin(sway.ph[2]) + 0.3 * Math.sin(sway.ph[3] + 1))];
+  }
+  let aimCur = [0, 0];
   const impact = n => { const p = pathAt(RANGE, n), loc = pivot.worldToLocal(p.clone()); return [-loc.x, loc.y - (-0.82)]; };   // plate coords (x right from the shooter's view, y up)
 
   // ---------- render one evaluated state ----------
@@ -734,7 +832,8 @@ export async function play(ctx) {
     const root = PICKABLE().map(r => r.getObjectByName(id) || (r.name === id ? r : null)).find(Boolean); if (!root) return;
     root.traverse(o => { if (o.isMesh && o.material && o.material.emissive) { if (!o.userData.hlOwn) { o.material = o.material.clone(); o.userData.hlOwn = true; } hlMats.push([o.material, o.material.emissive.clone()]); } });
     hl = id; }
-  const pulseHighlight = () => { if (!hl) return; const k = 0.35 + 0.35 * Math.sin(performance.now() / 1000 * 2 * Math.PI * 0.6); for (const [m] of hlMats) m.emissive.setRGB(k, k * 0.8, 0); };
+  // a yellow blink, about once a second, from barely lit to bright (author, 18 XI: the element to click blinks)
+  const pulseHighlight = () => { if (!hl) return; const k = 0.08 + 0.8 * (0.5 + 0.5 * Math.sin(performance.now() / 1000 * 2 * Math.PI * 1.1)); for (const [m] of hlMats) m.emissive.setRGB(k, k * 0.82, 0); };
   // the range card's target point (svg 200, 210 - range*0.19) on the screen, when the card is shown
   function cardTargetPx(c) { const box = [...OV.el.children].find(d => d.style.display !== "none" && d.textContent.includes("KARTA OGNIA")); const svg = box && box.querySelector("svg"); if (!svg) return null;
     const r = svg.getBoundingClientRect(); return { x: r.left + 200 * r.width / 400, y: r.top + (210 - (c || COND).range * 0.19) * r.height / 232, box }; }
@@ -791,7 +890,7 @@ export async function play(ctx) {
   window.__renderOverride = () => { updateLabel(); pulseHighlight();               // __dbgCam: test hook, a fixed camera for close-up checks
     const dc = window.__dbgCam; if (dc) { camera.position.copy(dc.p); camera.lookAt(dc.t); camera.fov = dc.fov || 40; camera.updateProjectionMatrix(); }
     const hide = dc && dc.noBody ? [] : null; if (hide) man.m.traverse(o => { if (o.isSkinnedMesh && o.visible) { o.visible = false; hide.push(o); } });
-    composer.render(); if (hide) hide.forEach(o => o.visible = true); };
+    composer.render(); if (hide) hide.forEach(o => o.visible = true); kesInset.render(ctx.renderer); };
   const canvas = ctx.renderer.domElement;
   let scopeOv = null, lastMag = -1;
   const grass = scene.children.find(o => o.isInstancedMesh && o.count > 1000);
@@ -813,19 +912,24 @@ export async function play(ctx) {
   // (refitted 18 XI with the wrist kept within ~30 degrees of the forearm: it was bent up too far)
   const kesPinch = () => { const L_ = curS && curS.man.L, key = typeof L_ === "string" ? L_ : L_ && L_.to; return /kestrel/.test(key || "") && curS.props.kestrel && curS.props.kestrel !== "ground"; };
   let curS = null;
-  const HAND_ORIENT = { elev: [-1.076, -1.79, -4.045], windage: [-1.007, 0.472, -0.093] };
+  const HAND_ORIENT = { elev: [-1.076, -1.79, -4.045], windage: [-1.007, 0.472, -0.093],
+    charging: [-0.714, 2.489, -2.103] };   // thumb and index on the right end of the charging handle, palm clear of the receiver and the scope (18 XI)
   const FINGER_POSE = {
     elev: { indexA: [0.98, 0.926, 0.328], gripA: [1.44, 0.564, 0.793], thumbA: [0.575, 0.604, 1.255], thumbUp: 0.213 },
-    windage: { indexA: [1.212, 0.739, 0.034], gripA: [0.985, 0.748, 0.024], thumbA: [0.635, 0.529, 0.678], thumbUp: -0.684 } };   // wrist low, beside the turret
+    windage: { indexA: [1.212, 0.739, 0.034], gripA: [0.985, 0.748, 0.024], thumbA: [0.635, 0.529, 0.678], thumbUp: -0.684 },
+    charging: { curl: 0.6 } };   // wrist low, beside the turret
   // the pinching hand turns with the cap, letting go and taking a new hold every ~40 degrees
   const TURRET_AX = { elev: { p: V(0, 0.121, -0.405), a: V(0, 1, 0), ang: S => S.rifle.elev / 10 * Math.PI * 2 },
     windage: { p: V(0.031, 0.086, -0.405), a: V(1, 0, 0), ang: S => -S.rifle.wind / 10 * Math.PI * 2 } };
   const twistOf = (key, S) => { const t = TURRET_AX[key]; if (!t) return 0; const SEG = 0.7, a = t.ang(S), n = a / SEG, f = n - Math.floor(n);
     return SEG * (f < 0.85 ? f / 0.85 : (1 - f) / 0.15) - SEG / 2; };
-  const GRIP_TUNE = { pitch: 0.2, roll: 0 };   // wrist high and hand flat: the index finger reaches the trigger in its own axis
+  const GRIP_A = [0.9, 1.2, 0.4];   // middle, ring, little finger round the grip (with the collision they stop at its surface)
+  // fitted numerically with the collision layer (18 XI): nothing of the palm or the thumb in the grip, the stock or the
+  // receiver, the index pad on the trigger when firing; wrist 2.4 cm further out than before, turned 0.06 rad
+  const GRIP_TUNE = { pitch: 0.3, roll: -0.1, yaw: 0.06 };   // wrist high and hand flat: the index finger reaches the trigger in its own axis
   const HANDS = {   // rifle-local wrist and knuckle targets
-    grip: [[0.033, -0.05, -0.255], [-0.022, -0.106, -0.36]], handguard: [[-0.035, -0.07, -0.66], [0.02, -0.05, -0.74]],
-    bipod: [[-0.06, -0.12, -0.80], [0.0, -0.2, -0.86]], charging: [[0.075, 0.02, -0.52], [0.045, 0.02, -0.57]],
+    grip: [[0.057, -0.052, -0.253], [-0.022, -0.106, -0.36]],   // fitted with the collision (18 XI): the palm was 2 cm inside the grip handguard: [[-0.035, -0.07, -0.66], [0.02, -0.05, -0.74]],
+    bipod: [[-0.06, -0.12, -0.80], [0.0, -0.2, -0.86]], charging: [[0.1295, 0.0025, -0.4759], [0.045, 0.02, -0.57]],   // fitted with the collision (18 XI): from the side, out of the receiver
     chamber: [[0.10, 0.03, -0.38], [0.025, 0.0, -0.45]], capF: [[0.07, 0.03, -0.53], [0.01, 0.05, -0.595]], capR: [[0.10, 0.07, -0.17], [0.035, 0.085, -0.245]],   // to the lid tabs
     capDropF: [[0.19, -0.17, -0.31], [0.17, -0.24, -0.37]], capDropR: [[0.23, -0.17, -0.22], [0.21, -0.24, -0.28]],
     elev: [[0.07, 0.164, -0.347], [0.004, 0.14, -0.41]], windage: [[0.115, 0.047, -0.366], [0.045, 0.086, -0.41]], parallax: [[-0.10, 0.07, -0.38], [-0.045, 0.086, -0.41]],
@@ -845,6 +949,7 @@ export async function play(ctx) {
     for (const sh of SHOTS) { const t = bt(sh, T); if (t >= 0 && t < 0.6) recoil = Math.max(recoil, Math.exp(-t * 10) * Math.sin(Math.min(t * 45, Math.PI)) * 0.035); }
     if (S.rifle.mode === "ground") rifle.position.add(V(0, 0, recoil).applyQuaternion(rifle.quaternion));
     rifle.updateMatrixWorld(true);
+    if (!window.__collideOff) COL.liftOnGround(rifle, COL.rifleSamples);   // collision: no part of the rifle under the terrain
     RP.bipodF.visible = !S.rifle.bipod; RP.bipodD.visible = S.rifle.bipod;
     RP.ch.position.copy(chRest).add(V(0, 0, 0.09 * S.rifle.rack));
     const boltBack = S.rifle.boltOpen ? 1 : 0;
@@ -917,6 +1022,11 @@ export async function play(ctx) {
       const tgt = typeof h === "object" && h.at ? h.at : window.__hk && window.__hk.key === h ? [window.__hk.wrist, HANDS[h][1]] : h === "grip" && window.__gripWrist ? [window.__gripWrist, HANDS.grip[1]] : typeof h === "string" ? HANDS[h] : (() => { const a = HANDS[h.from], b = HANDS[h.to]; return a && b ? [0, 1].map(i => a[i].map((v, j) => v + (b[i][j] - v) * h.k)) : null; })();
       if (!tgt) continue;
       let wr = V(...tgt[0]); const tax = side === "R" && typeof h === "string" ? TURRET_AX[h] : null;
+      // on the charging handle the hand goes back and forth with it (author, 18 XI); a hand on its way to or from the
+      // handle takes the handle's travel in proportion
+      const onCh = h === "charging" ? 1 : typeof h === "object" && !h.at && !h.man ? (h.to === "charging" ? h.k : 0) + (h.from === "charging" ? 1 - h.k : 0) : 0;
+      const chOff = V(0, 0, 0.09 * (S.rifle.rack || 0) * onCh);
+      wr.add(chOff);
       if (tax) wr = wr.sub(tax.p).applyAxisAngle(tax.a, twistOf(h, S)).add(tax.p);
       // kneeling over the rifle: if the hand cannot reach its hold, bend the torso a little more until it can
       // (one smooth amount, capped: bending in steps made the torso jitter frame to frame and hunch too far)
@@ -924,8 +1034,9 @@ export async function play(ctx) {
         const reach = 0.97 * (up_.getWorldPosition(V()).distanceTo(fo.getWorldPosition(V())) + fo.getWorldPosition(V()).distanceTo(ha.getWorldPosition(V())));
         const tw = rifle.localToWorld(wr.clone()), d0 = up_.getWorldPosition(V()).distanceTo(tw);
         if (d0 > reach) { rig.bend(0.2); man.m.updateMatrixWorld(true); const d1 = up_.getWorldPosition(V()).distanceTo(tw);   // linear estimate from one probe
-          const need = d0 > d1 ? Math.min(0.35, 0.2 * (d0 - reach) / (d0 - d1)) : 0; rig.bend(-0.2); rig.hinge(need); man.m.updateMatrixWorld(true); } }
-      armJobs.push([side, wr, V(...tgt[1])]);
+          // the charging handle forward: lean in further (18 XI)
+          const need = d0 > d1 ? Math.min(onCh > 0 ? 0.7 : 0.35, 0.2 * (d0 - reach) / (d0 - d1)) : 0; rig.bend(-0.2); rig.hinge(need); man.m.updateMatrixWorld(true); } }
+      armJobs.push([side, wr, V(...tgt[1]).add(chOff)]);
     }
     for (const [side, wr, kn] of armJobs) rig.arm(side, rifle.localToWorld(wr), rifle.localToWorld(kn));   // after all the bending
     // Kestrel in the left hand (author, 18 XI): hand upright, palm turned to the face, the device pinched at its lower end
@@ -946,6 +1057,7 @@ export async function play(ctx) {
       const GT = window.__gripTune || GRIP_TUNE;                  // hand pitch on the grip (test hook: __gripTune)
       const X = V(1, 0, 0).applyQuaternion(rq), Y = V(0, -GT.pitch, -1).normalize().applyQuaternion(rq), Z = X.clone().cross(Y).normalize(); X.copy(Y.clone().cross(Z));
       if (GT.roll) { const qr = new THREE.Quaternion().setFromAxisAngle(Y, GT.roll); X.applyQuaternion(qr); Z.applyQuaternion(qr); }
+      if (GT.yaw) { const qy = new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0).applyQuaternion(rq), GT.yaw); X.applyQuaternion(qy); Y.applyQuaternion(qy); Z.applyQuaternion(qy); }   // hand turned about the rifle's vertical
       const qh = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z)), hb = rig.B.RightHand, pq = new THREE.Quaternion();
       hb.parent.getWorldQuaternion(pq); hb.quaternion.copy(pq.invert().multiply(qh)); hb.updateMatrixWorld(true);
     }
@@ -980,7 +1092,7 @@ export async function play(ctx) {
     const MAG_C = V(0, -0.083, -0.46);                               // centre of the magazine in rifle coordinates
     if (S.props.mag === "chest") {                                   // held upright in front of the chest, lips up
       const q = man.m.quaternion.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0)));
-      magProp.quaternion.copy(q); magProp.position.copy(man.m.localToWorld(V(0.0, 1.0, 0.34))).sub(MAG_C.clone().applyQuaternion(q));
+      magProp.quaternion.copy(q); magProp.position.copy(man.m.localToWorld(V(0.0, 1.0, 0.34))).sub(MAG_C.clone().applyQuaternion(q)).add(V(0, MAG_RAISE, 0).applyQuaternion(q));
     } else if (S.props.mag === "insert") {                          // the mesh is in rifle coordinates: offset from its seated place
       magProp.position.copy(rifle.localToWorld(V(...S.props.magOff))); magProp.quaternion.copy(rifle.quaternion);
     } else if (S.props.mag === "ground") {                          // put down on its side left of the handguard, on the terrain
@@ -988,7 +1100,7 @@ export async function play(ctx) {
       const q = rifle.quaternion.clone().multiply(new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), Math.PI / 2));
       magProp.quaternion.copy(q); magProp.position.copy(c).sub(MAG_C.clone().applyQuaternion(q));
     } else if (magProp.visible) {                                    // at = where the magazine's centre goes, in rifle coordinates
-      const at = { hands: V(-0.17, -0.2, -0.43), well: V(0, -0.2, -0.47), inspect: V(-0.09, -0.02, -0.47) }[S.props.mag] || MAG_C;
+      const at = { hands: V(-0.17, -0.2 + MAG_RAISE, -0.43), well: V(0, -0.2, -0.47), inspect: V(-0.09, -0.02 + MAG_RAISE, -0.47) }[S.props.mag] || MAG_C;
       magProp.position.copy(rifle.localToWorld(at.clone().sub(MAG_C))); magProp.quaternion.copy(rifle.quaternion);   // the mesh is in rifle coordinates
     }
     rounds.forEach((r, i) => {                                       // loose rounds in the left palm, pushed into the magazine one by one
@@ -1001,16 +1113,40 @@ export async function play(ctx) {
       const index = S.man.trigger ? 0.42 : key === "chamber" ? 0.0 : key === "grip" ? 0.06 : key === "write" ? 0.45 : null;   // off the trigger along the receiver unless firing
       // on the grip the index finger is raised: its pad on the trigger when firing, otherwise straight along the receiver
       // above the trigger guard; middle, ring and little finger wrap the front of the grip (angles measured on the Grot)
-      const gripIdx = key === "grip" ? { gripA: [0.9, 1.2, 0.4], ...(S.man.trigger ? { indexA: [0, 1.65, 0.45 + 0.3 * (S.man.press || 0)] } : { indexA: [-0.5, 0, 0], indexUp: -0.35 }) } : {};
+      const gripIdx = key === "grip" ? { gripA: window.__gripA || GRIP_A, ...(S.man.trigger ? { indexA: window.__indexA || [0, 1.65, 0.45 + 0.3 * (S.man.press || 0)] } : { indexA: [-0.5, 0, 0], indexUp: -0.35 }) } : {};
       const tk = key === "grip" ? (S.man.thumbK || 0) : 0;            // thumb from the grip to the safety lever (measured on the Grot)
       // thumb at rest along the right side of the receiver (author, 18 XI); it goes over to the lever only for the safety
-      const TR = [-0.8, 0.3, 0.2], TRU = 0.9,   /* raised 30 degrees (author, 18 XI) */ TL = [-0.3, 0.8, 0.8], TLU = -0.3;
-      const thumbPose = key === "grip" ? { thumbA: TR.map((v, i) => v + (TL[i] - v) * tk + (i === 1 ? 0.15 * (S.rifle.selK ?? 0) * tk : 0)), thumbUp: TRU + (TLU - TRU) * tk } : {};
+      const TR = [-0.8, 0.3, 0.2], TRU = 0.9;   /* raised 30 degrees (author, 18 XI) */
+      // safety (author, 18 XI): the thumb goes down the right side of the receiver, beside the grip, onto the right
+      // lever's tab and pushes it round with the lever; it bulges out a little on the way so it clears the receiver
+      let thumbPose = key === "grip" ? { thumbA: TR, thumbUp: TRU } : {};
+      if (key === "grip" && tk > 0) { RP.sel.updateMatrixWorld(true);
+        const tab = rifle.worldToLocal(RP.sel.localToWorld(SEL_TAB.clone())).add(V(0.009, 0.004, 0.003));   // the pad on the outer face, behind the tab
+        const p = THUMB_REST_TIP.clone().lerp(tab, tk).add(V(0.008 * Math.sin(Math.PI * tk), 0, 0));
+        thumbPose = { ...thumbPose, thumbTip: rifle.localToWorld(p) }; }
       const fp_ = (window.__hk && window.__hk.key === key ? window.__hk.fingers : FINGER_POSE[key]) || {};
       handsMan.update({ R: { curl: key === "chamber" ? 0.75 : hold ?? (h ? S.man.curl.R : 0.25), index, thumb: key === "grip" ? 0.6 : null, ...gripIdx, ...thumbPose, ...fp_ },
                         L: kesPinch() ? { curl: window.__kc ?? 0.75, thumbA: window.__kt ?? [0.3, 0.45, 0.35], thumbUp: window.__ku ?? 0.45 } : { curl: S.man.L ? (/kestrel/.test(typeof S.man.L === "string" ? S.man.L : S.man.L.to || "") ? 0.7 : S.man.L === "bag" ? 0.75 : S.man.L === "handguard" ? 0.6 : 0.55) : 0.25 } }); 
     { const hb = man.rig.B.Hips, hq = hb.getWorldQuaternion(new THREE.Quaternion());   // pouch at the left front of the belt
       pouch.position.copy(hb.getWorldPosition(V())).add(V(0.15, 0.04, 0.09).applyQuaternion(hq)); pouch.quaternion.copy(hq); pouch.visible = man.m.visible; }
+    // collision pass (collide.js): body and gear out of the ground, hands out of the rifle, the magazine and the bag
+    if (!window.__collideOff) { const rep = window.__collideReport ? {} : null;
+      if (S.props.mag === "ground") COL.liftOnGround(magProp, COL.magSamples);
+      if (S.props.kestrel === "ground") COL.liftOnGround(kestrel, COL.kesSamples);
+      if (notebook.visible) COL.liftOnGround(notebook, COL.noteSamples);
+      for (const s of COL.solids) COL.prepare(s);
+      // walking with the rifle slung and taking it off the sling to the ground (author, 18 XI): no hand-rifle collision
+      const handSolids = S.rifle.mode === "sling" || S.rifle.mode === "carry" ? COL.solids.filter(x => x.name !== "rifle") : COL.solids;
+      // scene 5, caps off and turrets to zero (author, 18 XI, a trial): the left hand flew about, so no collision for
+      // the soldier there at all
+      // ... and inserting the magazine, s07.mag (author, 18 XI): the hand jumped about there too
+      const colMan = !(S.beat && /^(s05\.|s07\.mag$)/.test(S.beat.say || ""));
+      if (colMan) COL.man.solveBody(COL.solids, true);
+      if (colMan) for (let k = 0; k < 3; k++) {   // hands and body in turn: a hand pushed out can take the elbow into the ground; the body
+        const h = COL.man.solveHands(handSolids, rep), b = COL.man.solveBody(COL.solids, true, rep);   // pass keeps the hands where they are
+        if (b <= 0 && h <= 0) break; }
+      COL.inst.solveBody([], false, rep && (rep.inst = {}));
+      if (rep) window.__colLast = rep; }
     if (kestrel.visible && S.props.kestrel !== "ground") {   // after the hands are posed this frame
       // held from below in the fingertips, the whole device above the hand (author, 18 XI)
       const hb = man.rig.B.LeftHand, hq = hb.getWorldQuaternion(new THREE.Quaternion()), hy = V(0, 1, 0).applyQuaternion(hq).normalize();
@@ -1046,7 +1182,7 @@ export async function play(ctx) {
       caseEject.quaternion.copy(rifle.quaternion).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2 + tc * 40, tc * 25, 0)));
     }
     // overlays
-    for (const id of ["glove", "dial", "note", "windLook", "kes", "f", "card", "sel", "slow", "arc"]) { const o = QUIZ && id === "dial" ? null : S.ov[id]; OV.show(id, o ? o[0] : null, o ? o[1] : ""); }   /* QUIZ: the turret dial would give the settings away */
+    for (const id of ["glove", "dial", "note", "windLook", "kes", "f", "card", "sel", "slow", "arc"]) { const o = QUIZ && (id === "dial" || id === "kes") ? null : S.ov[id]; OV.show(id, o ? o[0] : null, o ? o[1] : ""); }   /* QUIZ: the turret dial and the Kestrel readout panel (read it off the 3D model) would give the settings away */
     // camera
     if (freeCam) { freeMove(); controls.update(); setScope(null); man.m.visible = rifle.visible = capF.visible = capR.visible = true; camera.fov = 50; camera.updateProjectionMatrix(); setFocus(controls.target); return; }
     const c = S.cam || { kind: "follow", off: [2.5, 1.2, 1.5], look: [0, 0.8, 0] };
@@ -1160,7 +1296,10 @@ export async function play(ctx) {
     const period = (sc.breathT || 4.2) * SLOW, br = sc.breath ?? 0.25;
     const pitch = (sc.pitch || 0) + br * Math.sin(2 * Math.PI * T / period) + br * 0.25 * Math.sin(2 * Math.PI * T / (1.3 * SLOW)) + recoil * 120 + (sc.wobble || 0) * 0.3;
     const yaw = (sc.yaw || 0) + br * 0.35 * Math.sin(2 * Math.PI * T / (period * 1.7)) + (sc.wobble || 0);
-    const dir = losDir.clone().addScaledVector(losRight, yaw / 1000).addScaledVector(losUp, pitch / 1000).normalize();
+    if (sway) aimCur = aimNow();                                     // the trainee's shot: the reticle sways with the breath
+    const ud = scopeDrag || { yaw: 0, pitch: 0 };                    // the trainee's own aim while measuring
+    const sw = sway ? aimCur : [0, 0]; scopeAim = [(sc.yaw || 0) + ud.yaw, (sc.pitch || 0) + ud.pitch];
+    const dir = losDir.clone().addScaledVector(losRight, (yaw + ud.yaw + sw[0]) / 1000).addScaledVector(losUp, (pitch + ud.pitch + sw[1]) / 1000).normalize();
     camera.position.copy(eye); camera.up.set(0, 1, 0); camera.lookAt(eye.clone().add(dir));
   }
 
@@ -1196,7 +1335,7 @@ export async function play(ctx) {
 
   (window.__frameHooks = window.__frameHooks || []).push(hook);
   addEventListener("pointerdown", () => snd.unlock(), { once: true });
-  startGate(TITLE, () => { snd.unlock(); tl.seek(0); tl.play(); });
+  startGate(TITLE, () => { snd.unlock(); tl.seek(0); tl.play(); }, k => runTask(k));
   // training / exam (panel "Zadania"): runner.js drives the timeline; one at a time
   let taskOn = false;
   async function runTask(mode, opts) {
@@ -1205,8 +1344,8 @@ export async function play(ctx) {
     try { const [{ startTask }, tab] = await Promise.all([import("./training/runner.js" + ver), fetch("demo/ballistics_table.json" + ver).then(r => r.json())]);
       await startTask(mode, { tl, panel, demo: window.__demo, tab, canvas: ctx.renderer.domElement, chapterTitles: SCENES }, opts); }
     catch (e) { console.error("task", e); } finally { taskOn = false; } }   // sound needs a click first: the scene starts on it
-  window.__demo = { runTask: (...a) => runTask(...a), tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt,
-    setConditions, setDial, setQuiz, pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
+  window.__demo = { COL, runTask: (...a) => runTask(...a), tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt,
+    setConditions, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; }, setKestrelInset: c => kesInset.set(c), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
 }
 
 // ---------- rear bag ----------

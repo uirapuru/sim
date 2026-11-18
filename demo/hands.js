@@ -86,8 +86,27 @@ export function makeHands(THREE, soldier, { cutIndex = { R: true, L: false }, gl
       h.bone.scale.setScalar(0.001); h.bone.updateMatrixWorld(true);   // hide the mitten (restored with the next clean pose)
     }
   }
+  // the end of a finger bone chain: the last bone has no child, so its tip is 2 cm along its axis
+  const tipOf = bn => bn.localToWorld(V(0, bn.children[0]?.position.length() || 0.02, 0));
+  // cyclic coordinate descent: each thumb joint in turn, tip to base, turned so the tip points at the target; each turn
+  // is capped (0.35 rad) so the thumb bends from the given pose instead of flipping into another one
+  const qa = new THREE.Quaternion(), qb = new THREE.Quaternion();
+  function thumbTo(h, target) {
+    const bones = h.fing.thumb;
+    for (let it = 0; it < 10; it++) {
+      for (let i = bones.length - 1; i >= 0; i--) {
+        const b = bones[i], bp = b.getWorldPosition(V()), from = tipOf(bones[bones.length - 1]).sub(bp), to = target.clone().sub(bp);
+        if (from.lengthSq() < 1e-10 || to.lengthSq() < 1e-10) continue;
+        qa.setFromUnitVectors(from.normalize(), to.normalize()); const ang = 2 * Math.acos(Math.min(1, Math.abs(qa.w)));
+        if (ang > 0.35) qa.slerp(qb.identity(), 1 - 0.35 / ang).normalize();
+        b.getWorldQuaternion(qb); const nw = qa.clone().multiply(qb); b.parent.getWorldQuaternion(qb); b.quaternion.copy(qb.invert().multiply(nw)); b.updateMatrixWorld(true);
+      }
+      if (tipOf(bones[bones.length - 1]).distanceTo(target) < 0.001) break;
+    }
+  }
   const handPoint = (side, x = 0, y = 0.09, z = 0) => hands[side].g.localToWorld(V(x, y, z));
-  return { update, handPoint, hands };
+  const api = { update, handPoint, hands, last: null, tipOf };
+  return api;
 }
 
 // Bought gloved hands (models/gloves.glb, CGTrader "FPS Glove Tactical 4", olive; the right glove is cut on the index
@@ -140,10 +159,45 @@ export function makeGloves(THREE, soldier, gltfScene, { clone } = {}) {
     const restQ = {}; for (const [f, bs] of Object.entries(fing)) restQ[f] = bs.map(b => b.quaternion.clone());
     hands[side] = { g, bone, fing, restQ };
   }
+  // the bought right glove is cut at the middle joint, so two phalanges of bare skin stood out of a short stub (author,
+  // 18 XI: badly cut). A sleeve of glove over the middle phalanx, with a hem at the last joint, leaves only the
+  // fingertip bare, as on a shooting glove. Sized from the bare finger itself, in the bone's own frame.
+  { const tip = (() => { let t = null; root.traverse(o => { if (o.isSkinnedMesh && /anatomy/.test(o.name)) t = o; }); return t; })();
+    const gl = (() => { let t = null; root.traverse(o => { if (o.isSkinnedMesh && !/anatomy/.test(o.name) && !t) t = o; }); return t; })();
+    const b2 = hands.R.fing.index[1], b3 = hands.R.fing.index[2];
+    if (tip && gl && b2 && b3) {
+      const bi = tip.skeleton.bones.indexOf(b2), inv = tip.skeleton.boneInverses[bi], ga = tip.geometry.attributes, v = V();
+      const pts = [], ys = [];
+      for (let i = 0; i < ga.position.count; i++) {
+        let best = 0, bw = -1; for (let k = 0; k < 4; k++) { const w = ga.skinWeight.getComponent(i, k); if (w > bw) { bw = w; best = ga.skinIndex.getComponent(i, k); } }
+        if (best !== bi) continue;
+        v.fromBufferAttribute(ga.position, i).applyMatrix4(tip.bindMatrix).applyMatrix4(inv); pts.push(v.clone()); ys.push(v.y); }
+      if (pts.length > 8) {
+        // the finger's own axis: the middle of its cross-section, which is not on the bone's axis
+        const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length, cz = pts.reduce((a, p) => a + p.z, 0) / pts.length;
+        ys.sort((a, b) => a - b);
+        // the radius near each end of the phalanx (the finger tapers), a little over the skin
+        const band = (lo, hi) => { const rr = pts.filter(p => p.y >= lo && p.y <= hi).map(p => Math.hypot(p.x - cx, p.z - cz)).sort((a, b) => a - b); return rr.length ? rr[Math.floor(rr.length * 0.8)] : 0; };
+        const yA = ys[0], yB = ys[ys.length - 1], q = (yB - yA) / 4;
+        const rBot = band(yA, yA + q) * 1.08, rTop = band(yB - q, yB) * 1.08 || rBot, r = Math.max(rBot, rTop);
+        const y0 = yA - rBot * 0.3, y1 = b3.position.length() * 0.97;
+        const src = [].concat(gl.material)[0], mat = src.clone(); mat.map = null; mat.normalMap = null;
+        // the glove's own colour: the mean of its texture, where there is one
+        const img = src.map && src.map.image;
+        if (img && img.width) { const c = document.createElement("canvas"); c.width = c.height = 16; const x = c.getContext("2d"); x.drawImage(img, 0, 0, 16, 16);
+          const px = x.getImageData(0, 0, 16, 16).data; let R = 0, G = 0, Bc = 0; for (let i = 0; i < px.length; i += 4) { R += px[i]; G += px[i + 1]; Bc += px[i + 2]; }
+          const n = px.length / 4; mat.color.setRGB(R / n / 255, G / n / 255, Bc / n / 255, THREE.SRGBColorSpace); }
+        const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBot, y1 - y0, 20, 1, true), mat);
+        sleeve.position.set(cx, (y0 + y1) / 2, cz); sleeve.name = "index_sleeve"; sleeve.castShadow = true;
+        const hem = new THREE.Mesh(new THREE.TorusGeometry(rTop, rTop * 0.14, 8, 24).rotateX(Math.PI / 2), mat); hem.position.set(cx, y1, cz); hem.name = "index_sleeve_hem";
+        mat.side = THREE.DoubleSide; b2.add(sleeve, hem);
+        hands.R.sleeve = { rBot, rTop, y0, y1, cx, cz, len: b3.position.length() };
+      } } }
   Object.defineProperty(hands.R.g, "visible", { get: () => root.visible, set: v => { root.visible = v; hands.L.g.children.forEach(c => c.visible = v); } });
   const q = new THREE.Quaternion(), q2 = new THREE.Quaternion(), AX = V(1, 0, 0), AXZ = V(0, 0, 1);
   const pose = (h, f, angles) => h.fing[f].forEach((b, i) => b.quaternion.copy(h.restQ[f][i]).multiply(q.setFromAxisAngle(AX, angles[i])));
   function update(p) {
+    api.last = p;                                                  // kept for the collision pass (collide.js)
     for (const side of ["R", "L"]) {
       const h = hands[side], s = p[side] || { curl: 0.3 };
       if (h.bone.scale.x < 0.01) h.bone.scale.setScalar(1);       // a second update in the same frame: undo the collapse
@@ -155,9 +209,29 @@ export function makeGloves(THREE, soldier, gltfScene, { clone } = {}) {
       const t = s.thumb ?? s.curl * 0.8; pose(h, "thumb", s.thumbA || [t * 0.35, t * 0.6, t * 0.6]);
       if (s.thumbUp) h.fing.thumb[0].quaternion.multiply(q.setFromAxisAngle(AXZ, s.thumbUp));          // thumb swung across (to a lever)
       h.g.updateMatrixWorld(true);
+      if (s.thumbTip) thumbTo(h, s.thumbTip);                       // thumb pad on a world point (IK from the pose above)
       h.bone.scale.setScalar(0.001); h.bone.updateMatrixWorld(true);   // hide the mitten (restored with the next clean pose)
     }
   }
+  // the end of a finger bone chain: the last bone has no child, so its tip is 2 cm along its axis
+  const tipOf = bn => bn.localToWorld(V(0, bn.children[0]?.position.length() || 0.02, 0));
+  // cyclic coordinate descent: each thumb joint in turn, tip to base, turned so the tip points at the target; each turn
+  // is capped (0.35 rad) so the thumb bends from the given pose instead of flipping into another one
+  const qa = new THREE.Quaternion(), qb = new THREE.Quaternion();
+  function thumbTo(h, target) {
+    const bones = h.fing.thumb;
+    for (let it = 0; it < 10; it++) {
+      for (let i = bones.length - 1; i >= 0; i--) {
+        const b = bones[i], bp = b.getWorldPosition(V()), from = tipOf(bones[bones.length - 1]).sub(bp), to = target.clone().sub(bp);
+        if (from.lengthSq() < 1e-10 || to.lengthSq() < 1e-10) continue;
+        qa.setFromUnitVectors(from.normalize(), to.normalize()); const ang = 2 * Math.acos(Math.min(1, Math.abs(qa.w)));
+        if (ang > 0.35) qa.slerp(qb.identity(), 1 - 0.35 / ang).normalize();
+        b.getWorldQuaternion(qb); const nw = qa.clone().multiply(qb); b.parent.getWorldQuaternion(qb); b.quaternion.copy(qb.invert().multiply(nw)); b.updateMatrixWorld(true);
+      }
+      if (tipOf(bones[bones.length - 1]).distanceTo(target) < 0.001) break;
+    }
+  }
   const handPoint = (side, x = 0, y = 0.09, z = 0) => hands[side].g.localToWorld(V(x, y, z));
-  return { update, handPoint, hands };
+  const api = { update, handPoint, hands, last: null, tipOf };
+  return api;
 }

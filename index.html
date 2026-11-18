@@ -127,13 +127,14 @@ const NEAR_GROUND = (() => {
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace; t.anisotropy = 16; t.generateMipmaps = true;
   return { tex: t, mean: new THREE.Vector3(m[0] / n / 255, m[1] / n / 255, m[2] / n / 255) };
 })();
+const SNOW_U = { value: 0 };                                      // snow on the fields, 0..1 (weather, training)
 function terrainMaterial(map) {
   const mat = new THREE.MeshLambertMaterial({ map });
   mat.onBeforeCompile = sh => {
-    sh.uniforms.detail = { value: detailTex }; sh.uniforms.nearTex = { value: NEAR_GROUND.tex }; sh.uniforms.nearMean = { value: NEAR_GROUND.mean };
+    sh.uniforms.detail = { value: detailTex }; sh.uniforms.snow = SNOW_U; sh.uniforms.nearTex = { value: NEAR_GROUND.tex }; sh.uniforms.nearMean = { value: NEAR_GROUND.mean };
     sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vWorld;")
       .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvWorld = (modelMatrix * vec4(transformed,1.0)).xyz;");
-    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform sampler2D detail; uniform sampler2D nearTex; uniform vec3 nearMean; varying vec3 vWorld;")
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform sampler2D detail; uniform sampler2D nearTex; uniform vec3 nearMean; uniform float snow; varying vec3 vWorld;")
       .replace("#include <map_fragment>", `#include <map_fragment>
         float dist = length(vWorld - cameraPosition);
         float d1 = texture2D(detail, vWorld.xz / 1.7).r, d2 = texture2D(detail, vWorld.xz / 9.0).g;
@@ -145,6 +146,11 @@ function terrainMaterial(map) {
           vec3 n1 = texture2D(nearTex, vWorld.xz / 1.5).rgb, n2 = texture2D(nearTex, vWorld.xz / 0.42 + 0.37).rgb;
           vec3 nd = (n1 * 0.65 + n2 * 0.35) / nearMean;
           diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * nd, 0.9 * nearK);
+        }
+        if (snow > 0.0) {                                       // a thin, patchy snow cover: white where the detail is high
+          float big = texture2D(detail, vWorld.xz / 37.0).b * 0.5 + texture2D(detail, vWorld.xz / 113.0).r * 0.5;
+          float cover = smoothstep(0.5, 0.62, big * 0.75 + d2 * 0.25) * snow * 0.9;
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.88, 0.92), cover);
         }`);
   };
   return mat;
@@ -493,6 +499,7 @@ const mixers = [];
 // ---------- time of day (simplified sun path for mid-November, 52.9° N) ----------
 const sunDir = new THREE.Vector3();
 function setHour(h, declDeg = -18.5) {                          // declDeg: sun declination (season), -18.5 = late autumn
+  curHour = h; curDecl = declDeg;
   const decl = declDeg * Math.PI / 180, lat = 52.9 * Math.PI / 180, ha = (h - 11.8) * 15 * Math.PI / 180;
   const alt = Math.asin(Math.sin(lat) * Math.sin(decl) + Math.cos(lat) * Math.cos(decl) * Math.cos(ha));
   const az = Math.atan2(Math.sin(ha), Math.cos(ha) * Math.sin(lat) - Math.tan(decl) * Math.cos(lat)) + Math.PI;
@@ -507,10 +514,37 @@ function setHour(h, declDeg = -18.5) {                          // declDeg: sun 
   hemi.color.setRGB(0.8 * day + 0.15, 0.87 * day + 0.17, 1.0 * day + 0.3);
   renderer.toneMappingExposure = 0.55 + 1.2 * (1 - day);
   scene.fog.color.setRGB(0.72 * day + 0.03, 0.78 * day + 0.04, 0.85 * day + 0.08);
+  applyWeather();
   sky.visible = alt > -0.2;
   scene.background = sky.visible ? null : new THREE.Color(0x05070d);
   document.getElementById("hourv").textContent = `${String(Math.floor(h)).padStart(2, "0")}:${String(Math.round(h % 1 * 60)).padStart(2, "0")}`;
 }
+// ---------- weather (training, author 18 XI): clear, drizzle (cloud, light rain) or mist (the target stays in sight) ----------
+// applied over setHour: it scales the sun and thickens the fog; the rain is streaks in a box that follows the camera
+let weather = { kind: "clear", range: 625 };
+const FOG0 = scene.fog.density;
+const rain = (() => { const N = 3500, BX = 30, BY = 16, p = new Float32Array(N * 6);
+  for (let i = 0; i < N; i++) { const x = (Math.random() - 0.5) * BX, y = (Math.random() - 0.5) * BY, z = (Math.random() - 0.5) * BX; p.set([x, y, z, x + 0.02, y - 0.22, z], i * 6); }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+  const m = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xc8d2dc, transparent: true, opacity: 0.32, depthWrite: false }));
+  m.frustumCulled = false; m.visible = false; m.userData = { BX, BY }; scene.add(m); return m; })();
+const snowfall = (() => { const N = 2600, BX = 26, BY = 12, p = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) p.set([(Math.random() - 0.5) * BX, (Math.random() - 0.5) * BY, (Math.random() - 0.5) * BX], i * 3);
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+  const m = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xf4f6fa, size: 0.035, transparent: true, opacity: 0.85, depthWrite: false }));
+  m.frustumCulled = false; m.visible = false; m.userData = { BX, BY }; scene.add(m); return m; })();
+function applyWeather() {
+  const k = weather.kind;
+  SNOW_U.value = k === "snow" ? 1 : 0; snowfall.visible = k === "snow";
+  if (k === "mist") { scene.fog.density = Math.min(0.0016, 0.7 / weather.range);   // ~60 % of the contrast left at the gong
+    sun.intensity *= 0.4; hemi.intensity *= 1.1; scene.fog.color.lerp(new THREE.Color(0xc9ced3), 0.6); }
+  else if (k === "snow") { scene.fog.density = 0.0008; sun.intensity *= 0.4; hemi.intensity *= 1.05; scene.fog.color.lerp(new THREE.Color(0xd5d9de), 0.6); }
+  else if (k === "drizzle") { scene.fog.density = 0.0006; sun.intensity *= 0.3; hemi.intensity *= 0.85; scene.fog.color.lerp(new THREE.Color(0x9aa3ad), 0.5); }
+  else scene.fog.density = FOG0;
+  rain.visible = k === "drizzle";
+}
+function setWeather(kind, range = 625) { weather = { kind, range }; setHour(curHour, curDecl); }
+let curHour = 13, curDecl = -18.5;
 document.getElementById("hour").oninput = e => setHour(+e.target.value);
 document.getElementById("wind").oninput = e => { windU.value = +e.target.value; document.getElementById("windv").textContent = `${e.target.value} m/s`; };
 setHour(13);
@@ -542,8 +576,15 @@ function setView(v) {
   yaw = -AZ; pitch = v === "stand" ? -0.02 : 0;
 }
 document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
-window.__sim = { camera, look: (x, y, z, tx, ty, tz) => { mode = "fly"; camera.position.set(x, y, z); const d = new THREE.Vector3(tx - x, ty - y, tz - z).normalize(); yaw = Math.atan2(-d.x, -d.z); pitch = Math.asin(d.y); }, meta, setView, setHour, snap: () => { if (!window.__camOverride) camera.rotation.set(pitch, yaw, 0, "YXZ"); placeGrass(camera.position.x, camera.position.z); if (window.__renderOverride) window.__renderOverride(); else renderer.render(scene, camera); return renderer.domElement.toDataURL("image/jpeg", 0.85); }, stop: () => renderer.setAnimationLoop(null) };
+window.__sim = { camera, look: (x, y, z, tx, ty, tz) => { mode = "fly"; camera.position.set(x, y, z); const d = new THREE.Vector3(tx - x, ty - y, tz - z).normalize(); yaw = Math.atan2(-d.x, -d.z); pitch = Math.asin(d.y); }, meta, setView, setHour, setWeather, snap: () => { if (!window.__camOverride) camera.rotation.set(pitch, yaw, 0, "YXZ"); placeGrass(camera.position.x, camera.position.z); if (window.__renderOverride) window.__renderOverride(); else renderer.render(scene, camera); return renderer.domElement.toDataURL("image/jpeg", 0.85); }, stop: () => renderer.setAnimationLoop(null) };
 setView("firing_point");
+// the demo scene (author, 18 XI): while it loads, a standing view from the firing point back to the stand, instead of the
+// prone view downrange with a red distance post filling the frame
+if (new URLSearchParams(location.search).get("scene") === "demo1") {
+  const [fx, , fz] = meta.positions.firing_point, sd = meta.standDeck, [sx, sy, sz] = sd ? [sd.x, sd.y + 1.5, sd.z] : meta.positions.stand;
+  const dx = sx - fx, dz = sz - fz, dl = Math.hypot(dx, dz), k = Math.min(8, dl * 0.3) / dl, ex = fx + dx * k, ez = fz + dz * k;   // a few metres on: clear of the lamp post
+  window.__sim.look(ex, hAt(ex, ez) + 1.7, ez, sx, sy, sz);
+}
 document.getElementById("load").remove();
 document.getElementById("playScene").onclick = async () => { const m = await import("./sequence.js?" + Date.now()); m.play(window.__ctx).catch(e => { console.error("scene error", e); window.__seqErr = String(e.stack || e); }); };
 const playSling = async (opts = {}) => { const m = await import("./sling_walk.js?" + Date.now()); return m.play(window.__ctx, opts).catch(e => { console.error("sling scene error", e); window.__seqErr = String(e.stack || e); }); };
@@ -558,6 +599,14 @@ const info = document.getElementById("info"), clock = new THREE.Clock(), cam2 = 
 renderer.setAnimationLoop(() => {
   const rawDt = clock.getDelta(), dt = Math.min(rawDt, 0.1), sdt = Math.min(rawDt, 1.0);   // sdt: real time for the scripted scene
   timeU.value += dt;
+  if (rain.visible) {                         // each drop falls ~6.5 m/s and comes back at the top; the box follows the camera
+    const u = rain.userData, pa = rain.geometry.attributes.position, A = pa.array, d = dt * 6.5;
+    for (let i = 1; i < A.length; i += 6) { let y = A[i] - d; if (y < -u.BY / 2) y += u.BY; A[i] = y; A[i + 3] = y - 0.22; }
+    pa.needsUpdate = true; rain.position.copy(camera.position); }
+  if (snowfall.visible) {                     // flakes fall ~0.9 m/s and drift a little
+    const u = snowfall.userData, pa = snowfall.geometry.attributes.position, A = pa.array, t = timeU.value;
+    for (let i = 0; i < A.length; i += 3) { let y = A[i + 1] - dt * 0.9; if (y < -u.BY / 2) y += u.BY; A[i + 1] = y; A[i] += Math.sin(t * 0.8 + i) * dt * 0.15; }
+    pa.needsUpdate = true; snowfall.position.copy(camera.position); }
   for (const m of mixers) m.update(window.__camOverride ? sdt : dt);
   if (window.__walker) {                      // walk back and forth between two points at ~1.4 m/s
     const w = window.__walker, A = w.path.a, B = w.path.b, L = Math.hypot(B[0] - A[0], B[1] - A[1]);

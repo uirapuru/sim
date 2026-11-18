@@ -16,6 +16,10 @@ const CSS = `
 #tkBar .fb.ok { color: #6fdc7c; } #tkBar .fb.bad { color: #ff7b72; } #tkBar .fb.info { color: #ffd84d; font-weight: 400; }
 #tkBar .timer { font: 700 15px monospace; color: #f2c94c; }
 #tkBar .choices { display: flex; flex-direction: column; gap: 6px; }
+#tkBar .fireBar { flex-basis: 100%; height: 12px; background: #2a2e33; border: 1px solid #555; border-radius: 6px; overflow: hidden; margin: 4px 0; }
+#tkBar .fireBar > div { height: 100%; width: 0; background: #f2c94c; }
+#tkBar .fireCount { flex-basis: 100%; color: #ccc; font-size: 13px; }
+#tkBar .dragTip { flex-basis: 100%; width: 100%; color: #ffd84d; font-weight: 600; margin: 2px 0 6px; }
 #tkBar .choices button { text-align: left; }
 .tkMenu { position: fixed; z-index: 130; background: rgba(12,14,16,.95); border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 5px;
   font: 14px system-ui; color: #eee; max-width: 330px; }
@@ -29,6 +33,12 @@ const CSS = `
   color: #ffd84d; font: 600 22px/1.35 system-ui; padding: 14px 26px; border-radius: 10px; text-align: center; box-shadow: 0 4px 18px rgba(0,0,0,.45); }
 #tkRing { position: fixed; z-index: 125; pointer-events: none; border: 3px solid #ffd84d; border-radius: 50%; box-shadow: 0 0 12px #ffd84d; }
 #tkModal { position: fixed; inset: 0; z-index: 160; background: rgba(0,0,0,.55); display: grid; place-items: center; font: 15px/1.45 system-ui; }
+#tkModal ul.summary { list-style: none; padding: 0; margin: 10px 0 0; }
+#tkModal ul.summary li { padding: 4px 8px; border-radius: 4px; margin: 2px 0; }
+#tkModal ul.summary li.ok { color: #7fdc8a; background: rgba(60,160,80,.12); }
+#tkModal ul.summary li.bad { color: #ff8a80; background: rgba(200,60,50,.14); }
+#tkModal ul.summary .why { color: #c9a; font-size: 13px; }
+#tkModal b.ok { color: #7fdc8a; } #tkModal b.bad { color: #ff8a80; }
 #tkModal .box { background: #15181b; color: #eee; border-radius: 10px; padding: 20px 24px; width: min(860px, calc(100vw - 32px)); max-height: 86vh; overflow: auto; }
 #tkModal h2 { margin: 0 0 8px; color: #f2c94c; font-size: 20px; }
 #tkModal select { background: #1b1e21; color: #fff; border: 1px solid #666; border-radius: 5px; padding: 6px; font: inherit; }
@@ -84,7 +94,8 @@ export function makeUi() {
       if (!notes) { notes = el("div"); notes.id = "tkNotes";
         const rows = tab.table.map(([d, e, w]) => `<tr><td>${d}</td><td>${f1(e)}</td><td>${(Math.round(w * 100) / 100).toFixed(2).replace(".", ",")}</td></tr>`).join("");
         notes.innerHTML = `<div class="t">Tabela balistyczna · .308 175 gr</div><table><tr><th>odległość [m]</th><th>wysokość [mrad ↑]</th><th>wiatr [mrad na 1 m/s]</th></tr>${rows}</table>
-          <div style="font-size:12px;color:#555;margin-top:6px">Wiatr pełny, z boku. Wiatr z lewej (godz. 9) → poprawka w lewo (L).</div>`;
+          <div style="font-size:12px;color:#555;margin-top:6px">Wiatr pełny, z boku. Wiatr z lewej (godz. 9) → poprawka w lewo (L).</div>
+          <div style="font-size:12px;color:#7a2a12;margin-top:4px;font-weight:600">Tabela dla 15 °C i 1010 hPa. W innych warunkach uwzględnij poprawkę: zimniej albo wyższe ciśnienie → powietrze gęstsze, pocisk spada bardziej.</div>`;
         document.body.append(notes); }
       notes.style.display = "block";
     },

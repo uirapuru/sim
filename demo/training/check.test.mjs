@@ -69,6 +69,8 @@ test("every step has the fields its kind needs", () => {
     else if (s.kind === "number") assert.ok(s.answer != null && s.unit && s.tol != null, s.id);
     else if (s.kind === "choice") assert.ok(s.correct && resolve(s.options, C).includes(resolve(s.correct, C)), s.id);
     else if (s.kind === "mark") assert.ok(resolve(s.mark, C).overlay === "card", s.id);
+    else if (s.kind === "fire") assert.ok(Array.isArray(s.shots) && s.shots.length, s.id);
+    else if (s.kind === "find") assert.ok(s.hold, s.id);
     else assert.equal(s.kind, "dial", s.id);
   }
   assert.equal(new Set(STEPS.map(s => s.id)).size, STEPS.length);
