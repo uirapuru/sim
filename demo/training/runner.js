@@ -5,7 +5,7 @@
 // modules are loaded with this file's version query, so a new deploy never mixes with cached old ones
 const V_ = new URL(import.meta.url).search;
 const { withLead } = await import("../engine.js" + V_);
-const [{ STEPS, ACTION_POOL, SECTIONS, sectionOf }, { resolve, checkAction, checkMark, checkNumber, checkChoice, choiceOptions, optionsFor, scoreExam, parseNumber },
+const [{ STEPS, ACTION_POOL, SECTIONS, sectionOf }, { resolve, checkAction, checkMark, checkNumber, checkWind, checkChoice, choiceOptions, optionsFor, scoreExam, parseNumber },
   { rollConditions, VIEW_CONDITIONS, tableDope, WEATHER, hourText }, { makeUi, f1 }] = await Promise.all(["steps_scene1", "check", "conditions", "ui"].map(n => import(`./${n}.js${V_}`)));
 
 const EXAM_MS = 45 * 60 * 1000, PASS = 80;   // author, 18 XI: 45 min for the whole exam, animations included
@@ -44,7 +44,9 @@ export async function startTask(mode, ctx, opts = {}) {
       <p>Każdy krok ma jedną próbę. Czy odpowiedź była dobra, zobaczysz w omówieniu na końcu. Odległość do gongu, wiatr, godzina strzelania, pogoda, temperatura i ciśnienie są losowane. Tabele balistyczne są dla 15 °C i 1010 hPa: w innych warunkach uwzględnij poprawkę.</p>`, [{ text: "Anuluj", value: null }, { text: "Start", main: true, value: 1 }]);
     if (go == null) { ui.destroy(); return; }
   }
-  const c = opts.conditions || rollConditions();
+  // the target is drawn somewhere the shooter can see it: no trees or ground on the line of sight (author, 19 XI)
+  let c = opts.conditions || rollConditions();
+  for (let k = 0; !opts.conditions && k < 60 && demo.sightBlocked && demo.sightBlocked(c); k++) c = rollConditions();
   let tick = null;
   try {
   await demo.setConditions(c); demo.setKestrelInset(c);
@@ -78,7 +80,7 @@ export async function startTask(mode, ctx, opts = {}) {
       let misses = 0, firstWrong = null;
       const wrong = (text) => { if (exam) finish({ ok: false, given: text }); else { misses++; firstWrong ??= text; view.feedback("Nie tym razem. " + firstSentence(st.hint), "bad"); } };
       const right = given => { if (!exam) view.feedback("Dobrze.", "ok"); finish({ ok: true, given, hinted, misses, firstWrong }); };
-      let onDown = null, onUp = null;
+      let onDown = null, onUp = null, onMove = null, extraCleanup = null;
       if (st.kind === "action") {
         // anywhere: the first step teaches the menu, so a click on any spot opens it (author, 18 XI)
         if (st.anywhere) ui.center("Na początek kliknij gdziekolwiek na ekranie");
@@ -92,11 +94,39 @@ export async function startTask(mode, ctx, opts = {}) {
           const r = checkAction(st, { target: id, action: pick }), given = st.anywhere ? pick : `${demo.nameOf(id)} → ${pick}`;
           r === "ok" ? right(given) : wrong(given); };
       } else if (st.kind === "mark") {
-        view.feedback("Kliknij na karcie ognia miejsce celu.", "info");
-        onDown = e => { if (e.button !== 0) return; const t = demo.cardTargetPx(c); if (!t) return; const rb = t.box.getBoundingClientRect();
-          if (e.clientX < rb.left || e.clientX > rb.right || e.clientY < rb.top || e.clientY > rb.bottom) return;
-          const dx = e.clientX - t.x, dy = e.clientY - t.y, given = `${Math.round(Math.hypot(dx, dy))} px od celu`;
+        // the red point is carried in the air under the mouse and drops where the button is let go; it can be picked
+        // up and moved again until "Zatwierdź" (author, 19 XI)
+        view.feedback("Złap czerwony punkt albo naciśnij myszą na karcie, przenieś na miejsce celu i puść. Potem „Zatwierdź”.", "info");
+        const dot = document.createElement("div"); dot.className = "tkDot"; document.body.append(dot);
+        let placed = null, carrying = false;
+        const inCard = (x, y) => { const t = demo.cardTargetPx(c); if (!t) return null; const rb = t.box.querySelector("svg").getBoundingClientRect();
+          return x >= rb.left && x <= rb.right && y >= rb.top && y <= rb.bottom ? t : null; };
+        const put = (x, y, air) => { dot.style.left = x + "px"; dot.style.top = y + "px"; dot.classList.toggle("air", air); dot.style.display = "block"; };
+        const dotAt = (x, y) => placed && Math.hypot(x - placed[0], y - placed[1]) < 16;
+        onDown = e => { if (e.button !== 0 || done) return; if (!inCard(e.clientX, e.clientY) && !dotAt(e.clientX, e.clientY)) return;
+          e.preventDefault(); e.stopPropagation(); carrying = true; put(e.clientX, e.clientY, true); };
+        onMove = e => { if (carrying) put(e.clientX, e.clientY, true); };
+        onUp = e => { if (!carrying) return; carrying = false;
+          if (inCard(e.clientX, e.clientY)) { placed = [e.clientX, e.clientY]; put(e.clientX, e.clientY, false); ok.disabled = false; }
+          else if (placed) put(placed[0], placed[1], false); else dot.style.display = "none"; };
+        addEventListener("pointermove", onMove, true); addEventListener("pointerup", onUp, true);
+        const ok = document.createElement("button"); ok.className = "main"; ok.textContent = "Zatwierdź"; ok.disabled = true;
+        ok.onclick = () => { if (!placed) return; const t = demo.cardTargetPx(c); if (!t) return; const dx = placed[0] - t.x, dy = placed[1] - t.y, given = `${Math.round(Math.hypot(dx, dy))} px od celu`;
           checkMark(st, dx, dy) ? right(given) : wrong(given); };
+        view.body.append(ok); extraCleanup = () => dot.remove();
+      } else if (st.kind === "wind") {
+        // speed off the Kestrel and the side the wind blows from, in one answer (author, 19 XI)
+        const inp = document.createElement("input"); inp.inputMode = "decimal"; const unit = document.createElement("span"); unit.textContent = "m/s";
+        const box = document.createElement("div"); box.className = "choices"; box.style.flexBasis = "100%"; let from = null; const FROM = h => +h.match(/godziny (\d+)/)[1];
+        for (const o of st.options) { const bt = document.createElement("button"); bt.textContent = o;
+          bt.onclick = () => { from = FROM(o); for (const x of box.children) x.classList.toggle("main", x === bt); }; box.append(bt); }
+        const ok = document.createElement("button"); ok.className = "main"; ok.textContent = "Zatwierdź";
+        const submit = () => { if (parseNumber(inp.value) == null) { view.feedback("Wpisz prędkość wiatru.", "info"); return; }
+          if (from == null) { view.feedback("Wybierz, skąd wieje wiatr.", "info"); return; }
+          const g = `${inp.value} m/s, z godz. ${from}`; checkWind(st, inp.value, from, c) ? right(g) : wrong(g); };
+        ok.onclick = submit; inp.onkeydown = e => { if (e.key === "Enter") submit(); };
+        const lab = document.createElement("div"); lab.className = "dragTip"; lab.textContent = "Prędkość:"; const lab2 = document.createElement("div"); lab2.className = "dragTip"; lab2.textContent = "Skąd wieje:";
+        view.body.append(lab, inp, unit, lab2, box, ok); setTimeout(() => inp.focus(), 50);
       } else if (st.kind === "choice") {
         const box = document.createElement("div"); box.className = "choices";
         for (const o of choiceOptions(st, c)) { const b = document.createElement("button"); b.textContent = o; b.onclick = () => checkChoice(st, o, c) ? right(o) : wrong(o); box.append(b); }
@@ -148,7 +178,7 @@ export async function startTask(mode, ctx, opts = {}) {
         view.body.append(we, ww, sb, ok);
       }
       if (onDown) addEventListener("pointerdown", onDown, true);
-      function cleanup() { voiceStop(); if (st.kind === "fire") demo.setAimSway(false); if (onUp) removeEventListener("pointerup", onUp, true); if (onDown) removeEventListener("pointerdown", onDown, true); if (st.scopeDrag || st.kind === "find") demo.setScopeDrag(false); ui.clearMenu(); ui.hideCenter(); ui.hideRing(); demo.highlight(null); ui.hideNotes(); }
+      function cleanup() { voiceStop(); if (onMove) removeEventListener("pointermove", onMove, true); if (extraCleanup) extraCleanup(); if (st.kind === "fire") demo.setAimSway(false); if (onUp) removeEventListener("pointerup", onUp, true); if (onDown) removeEventListener("pointerdown", onDown, true); if (st.scopeDrag || st.kind === "find") demo.setScopeDrag(false); ui.clearMenu(); ui.hideCenter(); ui.hideRing(); demo.highlight(null); ui.hideNotes(); }
     });
   }
   function hint(st) {
@@ -160,7 +190,8 @@ export async function startTask(mode, ctx, opts = {}) {
     if (st.kind === "action") return st.anywhere ? st.action : `${demo.nameOf(st.target)} → ${st.action}`;
     if (st.kind === "choice") return resolve(st.correct, c);
     if (st.kind === "number") { const a = resolve(st.answer, c); return `${st.unit === "m" ? Math.round(a) : f1(a)} ${st.unit}`; }
-    if (st.kind === "mark") return `cel na łuku ${c.range} m, w osi sektora`;
+    if (st.kind === "mark") return `cel na łuku ${c.range} m, na godzinie ${c.clock ?? 12}`;
+    if (st.kind === "wind") return `${f1(c.wind)} m/s, ${resolve(st.correct, c).toLowerCase()}`;
     const d = tableDope(c, tab); return `ok. ${f1(d.elev)} ↑ · ${f1(Math.abs(d.wind))} ${d.wind >= 0 ? "L" : "P"}`;
   };
 

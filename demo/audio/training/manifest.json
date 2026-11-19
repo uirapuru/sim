@@ -118,7 +118,7 @@
   {
    "file": "scan.1.mp3",
    "speaker": "narrator",
-   "duration": 3.2
+   "duration": 5.04
   }
  ],
  "zoom": [
@@ -142,18 +142,11 @@
    "duration": 2.56
   }
  ],
- "windSpeed": [
+ "wind": [
   {
-   "file": "windSpeed.0.mp3",
+   "file": "wind.0.mp3",
    "speaker": "narrator",
-   "duration": 2.48
-  }
- ],
- "windFrom": [
-  {
-   "file": "windFrom.0.mp3",
-   "speaker": "narrator",
-   "duration": 1.44
+   "duration": 4.08
   }
  ],
  "range": [
@@ -163,18 +156,18 @@
    "duration": 3.04
   }
  ],
+ "direction": [
+  {
+   "file": "direction.0.mp3",
+   "speaker": "narrator",
+   "duration": 6.4
+  }
+ ],
  "card": [
   {
    "file": "card.0.mp3",
    "speaker": "narrator",
    "duration": 2.24
-  }
- ],
- "bearing": [
-  {
-   "file": "bearing.0.mp3",
-   "speaker": "narrator",
-   "duration": 4.32
   }
  ],
  "parallax": [

@@ -2,7 +2,12 @@
 // own settings. Tables: ballistics_table.json (tools/weapons/ballistics_tables.py).
 // Conventions as in scene1.js: dial.wind > 0 = correction to the left; x > 0 = right of the gong centre, y > 0 = up.
 
-export const VIEW_CONDITIONS = { range: 625, wind: 3.0, windFrom: 9, hour: 10, weather: "clear" };
+export const VIEW_CONDITIONS = { range: 625, wind: 3.0, windFrom: 9, hour: 10, weather: "clear", clock: 12, bearing: 0 };
+
+// direction to the target (author, 19 XI): 11, 12 or 1 o'clock from the stand's axis (12 = straight ahead, one hour =
+// 30 degrees); bearing in degrees, > 0 = right of the axis, a few degrees off the full hour so it is read by eye.
+// The wind (windFrom) is reckoned from the line of fire, the shooter turns to the target.
+export const CLOCK_DEG = { 11: -30, 12: 0, 1: 30 };
 
 // weather: "clear", "drizzle" (light rain under cloud), "mist" (the gong still in sight, paler) or now and then "snow"
 // (a little snow on the fields, light snowfall)
@@ -18,7 +23,9 @@ export function rollConditions(rng = Math.random) {
   const weather = w < 0.43 ? "clear" : w < 0.65 ? "drizzle" : w < 0.88 ? "mist" : "snow";
   const span = (a, b, step = 1) => a + Math.floor(rng() * ((b - a) / step + 1)) * step;
   const [t0, t1, p0, p1] = { clear: [5, 24, 1000, 1030], drizzle: [4, 14, 990, 1010], mist: [0, 10, 1008, 1030], snow: [-6, 0, 1000, 1035] }[weather];
-  return { range, wind, windFrom, hour, weather, temp: span(t0 * 2, t1 * 2) / 2, pressure: span(p0, p1) };
+  const temp = span(t0 * 2, t1 * 2) / 2, pressure = span(p0, p1);
+  const clock = [11, 12, 1][Math.floor(rng() * 3)], bearing = Math.round((CLOCK_DEG[clock] + (rng() - 0.5) * 12) * 10) / 10;
+  return { range, wind, windFrom, hour, weather, temp, pressure, clock, bearing };
 }
 
 // air density relative to the tables' air (dry air: pressure over absolute temperature)

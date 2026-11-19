@@ -17,11 +17,13 @@ test("rolled conditions stay in range", () => {
     assert.ok(["clear", "drizzle", "mist", "snow"].includes(c.weather), JSON.stringify(c));
     assert.ok(c.temp >= -6 && c.temp <= 24 && c.pressure >= 990 && c.pressure <= 1035, JSON.stringify(c));
     if (c.weather === "snow") assert.ok(c.temp <= 0, JSON.stringify(c));
+    assert.ok([11, 12, 1].includes(c.clock), JSON.stringify(c));
+    assert.ok(Math.abs(c.bearing - { 11: -30, 12: 0, 1: 30 }[c.clock]) <= 6, JSON.stringify(c));
   }
 });
 
 test("the view conditions and their settings hit", () => {
-  assert.deepEqual(VIEW_CONDITIONS, { range: 625, wind: 3.0, windFrom: 9, hour: 10, weather: "clear" });
+  assert.deepEqual(VIEW_CONDITIONS, { range: 625, wind: 3.0, windFrom: 9, hour: 10, weather: "clear", clock: 12, bearing: 0 });
   assert.equal(impactFor(VIEW_CONDITIONS, { elev: 6.45, wind: 1.56 }, [0, 0], tab).hit, true);
 });
 

@@ -26,9 +26,16 @@ export function checkNumber(step, text, c) {
 
 export const checkChoice = (step, picked, c) => picked === resolve(step.correct, c);
 
+// wind: the speed read off the Kestrel (within step.tol) and where it blows from, both right
+export function checkWind(step, text, from, c) {
+  const v = parseNumber(text); if (v == null || from == null) return false;
+  return Math.abs(v - c.wind) <= step.tol + 1e-9 && from === c.windFrom;
+}
+
 // the options of a choice step in random order (the data lists the right one first)
+// ordered: options that have a natural order (clock hours) stay in it
 export function choiceOptions(step, c, rng = Math.random) {
-  const o = [...resolve(step.options, c)];
+  const o = [...resolve(step.options, c)]; if (step.ordered) return o;
   for (let i = o.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [o[i], o[j]] = [o[j], o[i]]; }
   return o;
 }

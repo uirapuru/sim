@@ -1,8 +1,11 @@
 // Steps of the training and the exam for lesson 1 ("Strzelanie z SpKW/Z"), in the order of the procedure.
 // play: narration keys of the timeline played after the answer (together they cover every key once, in order).
 // hold: the frame shown while the question waits ({ key, u }); default: the start of play[0].
-// Kinds: action (click the part, pick the action), choice, number, mark (range card), dial (the student's own
+// play skips the keys the trainee has just done himself (author, 19 XI: the search with the scope is not replayed).
+// Kinds: action (click the part, pick the action), choice, number, wind (speed and side), mark (range card), dial (the student's own
 // settings; graded by the shot itself, see conditions.js). Values may be functions of the drawn conditions c.
+// the target on the range card (svg 400 x 232, stand at 200, 210, 190 px = 1000 m), the same in scene1.js
+export const cardPoint = c => { const r = c.range * 0.19, a = (c.bearing ?? 0) * Math.PI / 180; return { x: 200 + r * Math.sin(a), y: 210 - r * Math.cos(a) }; };
 const fromText = c => c.windFrom === 9 ? "Z godziny 9, czyli z lewej" : "Z godziny 3, czyli z prawej";
 
 // the training is grouped into four sections over the 18 scenes of the lesson (author, 18 XI); a run started at a
@@ -65,7 +68,7 @@ export const STEPS = [
     hint: "Dźwignia zaczepu suwadła jest na lewym boku komory spustowej. Po jej naciśnięciu suwadło dosyła nabój." },
   // find: the trainee searches the ground with the scope (3x) and lays the cross on the gong (author, 18 XI)
   { id: "scan", chapter: 8, kind: "find", ask: "Komenda: „Do celu – gong czerwony, na wprost…”. Odległości nie podano. Znajdź cel w lunecie i najedź na niego krzyżem.",
-    hold: { key: "s08.scan", u: 0 }, play: ["s08.cmd", "s08.target", "s08.scan", "s08.strips"],
+    hold: { key: "s08.scan", u: 0 }, play: ["s08.cmd"],
     hint: "Przy najmniejszym powiększeniu widzisz najszerzej. Pasy od lewej do prawej, coraz dalej: nic nie pominiesz." },
   { id: "zoom", chapter: 8, kind: "choice", ask: "Cel znaleziony. Co z powiększeniem?",
     options: ["Zwiększam do 12×, żeby dokładnie zmierzyć cel", "Zostawiam 3×", "Zmniejszam, żeby widzieć teren", "Nie ma znaczenia"],
@@ -77,22 +80,23 @@ export const STEPS = [
   { id: "width", chapter: 9, kind: "number", unit: "mil", answer: c => 500 / c.range, tol: 0.1, hold: { key: "s09.width", u: 0.05 }, scopeDrag: true,
     ask: "Odczytaj w siatce szerokość gongu.", play: ["s09.width", "s09.note"],
     hint: "Gong ma 0,5 m szerokości. Liczysz tak samo, w poziomie." },
-  { id: "windSpeed", chapter: 10, kind: "number", unit: "m/s", answer: c => c.wind, tol: 0.2, hold: { key: "s10.reading", u: 0.6 },
-    ask: "Odczytaj prędkość wiatru z Kestrela.", play: ["s10.look", "s10.kestrel", "s10.reading"],
-    hint: "Kestrel trzymasz wiatraczkiem do wiatru, aż wynik się ustali. Prędkość jest w górnym wierszu ekranu." },
-  { id: "windFrom", chapter: 10, kind: "choice", ask: "Skąd wieje wiatr?",
+  // speed and direction in one question (author, 19 XI)
+  { id: "wind", chapter: 10, kind: "wind", tol: 0.2, correct: fromText, hold: { key: "s10.reading", u: 0.6 },
     options: ["Z godziny 9, czyli z lewej", "Z godziny 3, czyli z prawej", "Z godziny 12, czyli z przodu", "Z godziny 6, czyli z tyłu"],
-    correct: fromText, play: ["s10.note"], hold: { key: "s10.reading", u: 0.6 },
-    hint: "Kierunek pokazuje Kestrel (DIR) i trawa: pochyla się w stronę, w którą wieje wiatr." },
+    ask: "Odczytaj z Kestrela prędkość wiatru i określ, skąd wieje.", play: ["s10.look", "s10.kestrel", "s10.reading", "s10.note"],
+    hint: "Kestrel trzymasz wiatraczkiem do wiatru, aż wynik się ustali; prędkość jest w górnym wierszu ekranu. Kierunek pokazuje Kestrel (DIR) i trawa: pochyla się w stronę, w którą wieje wiatr." },
   { id: "range", chapter: 11, kind: "number", unit: "m", answer: c => c.range, tol: "5%", hold: { key: "s10.note", u: 0.97 },   /* not on the formula: it shows the result */
     ask: "Oblicz odległość do celu ze swoich odczytów.", play: ["s11.formula", "s11.height", "s11.width"],
     hint: "Odległość [m] = wymiar celu [m] × 1000 / odczyt [mil]. Policz z wysokości i z szerokości; wyniki powinny być bliskie." },
-  { id: "card", chapter: 12, kind: "mark", mark: c => ({ overlay: "card", x: 200, y: 210 - c.range * 0.19 }),
-    ask: "Zaznacz cel na karcie ognia.", play: ["s12.card"],
-    hint: "Łuki są co 100 m. Cel jest na wprost, w osi sektora, w odległości, którą policzyłeś." },
-  { id: "bearing", chapter: 12, kind: "choice", ask: "Jak podasz godzinowo kierunek do celu leżącego na wprost stanowiska?",
-    options: ["Godzina 12", "Godzina 6", "Godzina 3", "Godzina 9"], correct: "Godzina 12", play: ["s12.target", "s12.weather", "s12.sun"],
-    hint: "Godzina 12 to kierunek na wprost stanowiska, 3 w prawo, 9 w lewo." },
+  // direction by eye (author, 19 XI): the view from behind the shooter along the stand's axis, a pulsing line to the
+  // target; the target's place is drawn with the conditions
+  { id: "direction", chapter: 11, kind: "choice", ordered: true, hold: { key: "s11.dir", u: 0.3 },
+    ask: "Określ na oko kierunek do celu. Patrzysz wzdłuż osi stanowiska, czyli na godzinę 12.",
+    options: ["Godzina 10", "Godzina 11", "Godzina 12", "Godzina 1", "Godzina 2"], correct: c => `Godzina ${c.clock ?? 12}`, play: ["s11.dir"],
+    hint: "Godzina 12 to kierunek na wprost stanowiska. Jedna godzina to 30°: godzina 1 to 30° w prawo, godzina 11 to 30° w lewo." },
+  { id: "card", chapter: 12, kind: "mark", tol: 12, mark: c => ({ overlay: "card", ...cardPoint(c) }),
+    ask: "Zaznacz cel na karcie ognia.", play: ["s12.card", "s12.target", "s12.weather", "s12.sun"],
+    hint: "Łuki są co 100 m, środek dołu karty to twoje stanowisko, a pionowa oś to godzina 12. Postaw punkt na łuku twojej odległości, w kierunku, który określiłeś." },
   { id: "parallax", chapter: 13, kind: "action", target: "scope_parallax", hold: { key: "s13.elev", u: 0.5 }, action: "Ustaw paralaksę na odległość do celu",
     ask: "Cel jest nieostry, a siatka pływa po celu, gdy ruszasz głową.", play: ["s12.dope", "s13.parallax"],
     hint: "Pokrętło paralaksy jest z lewej strony lunety. Ustaw je na odległość do celu." },

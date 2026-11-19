@@ -111,7 +111,7 @@ export class Timeline {
   seek(T) { this.T = Math.max(0, Math.min(this.total, T)); this.stopVoice(); this.syncAudio(); }
   play() { this.ac.resume(); if (this.T >= this.total - 0.05) this.T = 0; this.playing = true; this.syncAudio(); }
   pause() { this.playing = false; this.syncAudio(); }
-  beatByKey(key) { const b = this.beats.find(b => b.say === key); if (!b) throw new Error("no beat " + key); return b; }
+  beatByKey(key) { const b = this.beats.find(b => b.say === key || b.key === key); if (!b) throw new Error("no beat " + key); return b; }
   // the frame before a step: the start of its first beat (or a given point u of a beat), paused
   holdAt(key, u = 0) { this.cancelRange(); const b = this.beatByKey(key); this.seek(b.start + Math.max(0.001, b.dur * u)); this.playing = false; this.syncAudio(); }
   // play from the start of beat fromKey up to the start of the next beat after toKey (beats without narration in

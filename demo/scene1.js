@@ -40,10 +40,13 @@ export async function play(ctx) {
 
   // ---------- range geometry ----------
   const fwd = V(FIRE.x, 0, FIRE.y).normalize(), left = V(fwd.z, 0, -fwd.x), up = V(0, 1, 0);
+  // fwd0: the stand's axis (12 o'clock, azimuth 55 deg); fwd turns with the shooter to the target (setConditions)
+  const fwd0 = fwd.clone(), left0 = left.clone(), AXIS_AZ = 55;
   const g = p => { p.y = hAt(p.x, p.z); return p; };
   const fp = g(V(meta.positions.firing_point[0], 0, meta.positions.firing_point[2]));
   for (const o of scene.children) if (o.isMesh && o.geometry.type === "BoxGeometry" && Math.hypot(o.position.x - fp.x, o.position.z - fp.z) < 4) o.visible = false;   // stand marker posts on the line of fire
-  const W = (f, l, u = 0) => g(fp.clone().addScaledVector(fwd, f).addScaledVector(left, l)).add(V(0, u, 0));   // point in the range frame
+  const W = (f, l, u = 0) => g(fp.clone().addScaledVector(fwd, f).addScaledVector(left, l)).add(V(0, u, 0));   // point in the stand frame (turned to the target)
+  const W0 = (f, l, u = 0) => g(fp.clone().addScaledVector(fwd0, f).addScaledVector(left0, l)).add(V(0, u, 0));   // point in the range frame (the stand's axis)
   const yawOf = d => Math.atan2(d.x, d.z);                  // glTF +Z faces d
 
   // ---------- gong: red torso 0.5 x 1.0 m on chains in a frame ----------
@@ -68,6 +71,16 @@ export async function play(ctx) {
   const plate = new THREE.Mesh(plateGeo, [new THREE.MeshStandardMaterial({ map: gongTex, roughness: 0.6, metalness: 0.2 }), new THREE.MeshStandardMaterial({ color: 0x7a1010 })]);
   plate.position.set(0, -0.82, 0.006); plate.rotation.y = Math.PI; plate.castShadow = true; pivot.add(plate);
   gong.updateMatrixWorld(true); const GC = gong.localToWorld(V(0, 1.13, 0));   // plate centre (world), the aiming point (moved by setConditions)
+  // direction line (author, 19 XI): from in front of the muzzle to just short of the gong, pulsing yellow-orange; a cone
+  // whose radius grows with the distance from the camera, so it is equally thick on the screen all the way
+  const dirMat = new THREE.MeshBasicMaterial({ color: 0xffd400, transparent: true, depthWrite: false, fog: false });
+  const dirLine = new THREE.Mesh(new THREE.BufferGeometry(), dirMat); dirLine.visible = false; dirLine.frustumCulled = false; dirLine.renderOrder = 5; scene.add(dirLine);
+  const DIR_A = new THREE.Color(0xffd400), DIR_B = new THREE.Color(0xff4d1a);
+  function updateDirLine(camPos) {
+    const a = RL(MUZZLE).addScaledVector(fwd, 1.0), b = a.clone().lerp(GC, 0.985), len = a.distanceTo(b), k = 0.0022;
+    dirLine.geometry.dispose(); dirLine.geometry = new THREE.CylinderGeometry(k * camPos.distanceTo(b), k * camPos.distanceTo(a), len, 12, 1, true);
+    dirLine.position.copy(a).lerp(b, 0.5); dirLine.quaternion.setFromUnitVectors(V(0, 1, 0), b.clone().sub(a).normalize());
+    const p = 0.5 + 0.5 * Math.sin(performance.now() / 1000 * 2 * Math.PI * 1.2); dirMat.color.copy(DIR_A).lerp(DIR_B, p); dirMat.opacity = 0.7 + 0.3 * p; }
   let marksDrawn = -1;
   function drawMarks(hits) {                                 // red paint, grey splash where bullets struck
     if (hits.length === marksDrawn) return; marksDrawn = hits.length;
@@ -424,9 +437,9 @@ export async function play(ctx) {
   })();
 
   // places: kneeling behind the rifle, prone with the eye at the scope, instructor beside the spotter
-  const yawFwd = yawOf(fwd);
+  let yawFwd = yawOf(fwd);
   const KNEEL = W(-0.85, 0.36);                                        // kneeling left of the rifle, level with the stock
-  const KNEEL_YAW = yawOf(RL(V(0, 0, -0.45)).sub(KNEEL).setY(0));        // turned towards the receiver
+  let KNEEL_YAW = yawOf(RL(V(0, 0, -0.45)).sub(KNEEL).setY(0));        // turned towards the receiver
   const eyeW = RL(EYE).addScaledVector(V(0, 0, 1).applyQuaternion(qGround), 0.07);             // 7 cm behind the eyepiece
   const PRONE = (() => { const e = eyeProne.clone().applyAxisAngle(up, yawFwd); const p = eyeW.clone().sub(e); p.y = hAt(p.x, p.z); return p; })();
   const START = W(-25, 4.0), LINE = W(-15, 1.2), INST = W(-1.2, 2.6);   // start line ~15 m behind the stand
@@ -583,15 +596,24 @@ export async function play(ctx) {
   const F = () => { const h = +(1000 / RANGE).toFixed(1), w = +(500 / RANGE).toFixed(1); return ["odległość = wymiar celu [m] × 1000 / odczyt [mil]", `wysokość: 1,0 × 1000 / ${f1(h)} = <b>${Math.round(1000 / h)} m</b>`, `szerokość: 0,5 × 1000 / ${f1(w)} = <b>${Math.round(500 / w)} m</b>`]; };
   const formula = u => [`<div style="font:600 15px system-ui;color:#f2c94c;margin-bottom:8px">Odległość z siatki mil-dot</div><div style="font:22px/1.7 system-ui">${reveal(F(), u)}</div>`, "left:50%;transform:translateX(-50%);top:16%;background:rgba(0,0,0,.8);color:#fff;padding:16px 26px;border-radius:8px;min-width:560px"];
   for (const [k, f] of [["s11.formula", 0.34], ["s11.height", 0.67], ["s11.width", 1]]) B(11, k, (S, u) => { writing(S); S.cam = { kind: "follow", off: [0.9, 0.7, 0.3], look: [0.25, 0.1, 0.9] }; S.ov.f = formula(f); });
+  // direction to the target by eye (author, 19 XI): from behind the shooter along the stand's axis (12 o'clock in the
+  // middle of the picture), a pulsing line from the rifle to the target; no narration (key, not say)
+  B(11, null, (S, u) => { prone(S); S.dirLine = true;
+    S.cam = { kind: "world", pos: W0(-6, -1.3, 3.6), look: W0(40, -1.3, -4.5), fov: 55, still: true, aperture: 0 };
+    if (!QUIZ) S.ov.dir = [`Kierunek do celu: <b>godzina ${COND.clock ?? 12}</b>`, "left:50%;transform:translateX(-50%);top:10%;background:rgba(0,0,0,.7);color:#fff;padding:8px 16px;border-radius:6px;font:18px system-ui"]; },
+    { key: "s11.dir", dur: 5 });
   // 12 range card
+  // the target's point on the card (svg 400 x 232, the stand at 200, 210, 190 px = 1000 m), as cardPoint in steps_scene1.js
+  const cardPoint = brg => { const r = RANGE * 0.19, a = brg * Math.PI / 180; return { x: 200 + r * Math.sin(a), y: 210 - r * Math.cos(a) }; };
   const rangeCard = u => {
     const k = n => u >= n / 6;
     const arcs = [];
     for (let d = 100; d <= 1000; d += 100) { const r = d / 1000 * 190; arcs.push(`<path d="M ${200 - r} 210 A ${r} ${r} 0 0 1 ${200 + r} 210" fill="none" stroke="#7a8496" stroke-width="${d % 500 ? 0.8 : 1.6}"/>`); if (d % 200 === 0) arcs.push(`<text x="${200 + r - 3}" y="224" font-size="10" fill="#555" text-anchor="middle">${d}</text>`); }
-    const tr = RANGE / 1000 * 190;
-    const svg = `<svg width="400" height="232"><line x1="200" y1="210" x2="${200 - 190 * Math.sin(0.5)}" y2="${210 - 190 * Math.cos(0.5)}" stroke="#333" stroke-width="1.5"/><line x1="200" y1="210" x2="${200 + 190 * Math.sin(0.5)}" y2="${210 - 190 * Math.cos(0.5)}" stroke="#333" stroke-width="1.5"/>${arcs.join("")}
-      <polygon points="200,203 194,214 206,214" fill="#1d2a40"/>${k(1) ? `<circle cx="200" cy="${210 - tr}" r="7" fill="#c0242a"/><text x="212" y="${214 - tr}" font-size="14" fill="#c0242a">1</text>` : ""}</svg>`;
-    const rows = [["Cel nr 1", "gong czerwony, tułów 0,5 × 1,0 m"], ["Kierunek", "55° (978 mils) · godz. 12"], ["Odległość", `${RANGE} m`], ["Warunki", `8 °C · 1005 hPa · RH 80 % · wiatr ${f1(COND.wind)} m/s z godz. ${COND.windFrom}`], ["Godzina / słońce", "13:00 · słońce z tyłu po prawej"], ["Nastawy", `wysokość ${f1(ELEV)} mrad ↑ · wiatr ${f1(Math.abs(WIND))} mrad ${WIND >= 0 ? "←" : "→"}`]];
+    // the sector +-40 deg about the stand's axis (12 o'clock, the dashed line); the target at its range and bearing
+    const SEC = 0.7, tp = cardPoint(COND.bearing ?? 0), brg = COND.bearing ?? 0, az = (AXIS_AZ + brg + 360) % 360;
+    const svg = `<svg width="400" height="232"><line x1="200" y1="210" x2="${200 - 190 * Math.sin(SEC)}" y2="${210 - 190 * Math.cos(SEC)}" stroke="#333" stroke-width="1.5"/><line x1="200" y1="210" x2="${200 + 190 * Math.sin(SEC)}" y2="${210 - 190 * Math.cos(SEC)}" stroke="#333" stroke-width="1.5"/><line x1="200" y1="210" x2="200" y2="18" stroke="#7a8496" stroke-width="0.8" stroke-dasharray="4 4"/>${arcs.join("")}
+      <polygon points="200,203 194,214 206,214" fill="#1d2a40"/>${k(1) ? `<circle cx="${tp.x}" cy="${tp.y}" r="7" fill="#c0242a"/><text x="${tp.x + 12}" y="${tp.y + 4}" font-size="14" fill="#c0242a">1</text>` : ""}</svg>`;
+    const rows = [["Cel nr 1", "gong czerwony, tułów 0,5 × 1,0 m"], ["Kierunek", `${Math.round(az)}° (${Math.round(az * 6400 / 360)} mils) · godz. ${COND.clock ?? 12}`], ["Odległość", `${RANGE} m`], ["Warunki", `8 °C · 1005 hPa · RH 80 % · wiatr ${f1(COND.wind)} m/s z godz. ${COND.windFrom}`], ["Godzina / słońce", "13:00 · słońce z tyłu po prawej"], ["Nastawy", `wysokość ${f1(ELEV)} mrad ↑ · wiatr ${f1(Math.abs(WIND))} mrad ${WIND >= 0 ? "←" : "→"}`]];
     const tbl = rows.map(([a, b], i) => `<tr><td style="color:#666;padding-right:10px">${a}</td><td>${k(i + 1) ? b : ""}</td></tr>`).join("");
     return [`<div style="font:700 15px system-ui;color:#1d2a40;margin-bottom:4px">KARTA OGNIA · stanowisko Kijewo</div>${svg}<table style="font:16px/1.5 'Segoe Print','Comic Sans MS',cursive;color:#1d2a40">${tbl}</table>`,
       "right:4%;top:6%;background:#f4f1e8;border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.5);padding:12px 16px"];
@@ -641,12 +663,30 @@ export async function play(ctx) {
   B(17, "s17.finger", (S, u) => { unloaded(S); S.man.R = "chamber"; S.man.curl.R = 0.45; S.man.look = "port"; S.cam = { kind: "rifle", pos: [0.34, 0.1, -0.33], look: [0.03, 0, -0.44], fov: 30 }; });
   // 18 "Do przejrzenia broń!": the instructor checks; "Powstań!"; back to the start line
   cmd(18, "s18.cmd", S => unloaded(S));
-  const INSPECT = RL(V(0.55, 0, -0.42)).setY(0), INSPECT_YAW = yawOf(RL(V(0, 0, -0.43)).sub(INSPECT).setY(0));
+  const INSPECT = RL(V(0.55, 0, -0.42)).setY(0); let INSPECT_YAW = yawOf(RL(V(0, 0, -0.43)).sub(INSPECT).setY(0));
   // the instructor walks to the right side of the rifle, kneels, bends over the ejection port and checks it; he says
   // "Sprawdziłem!" still kneeling and gets up during the next sentence
   // the instructor goes round behind the shooter's feet to the right side of the rifle: never over him, never in front
   // of the muzzle (author, 18 XI)
   const INSPECT_ROUTE = [INST, W(-1.8, 2.3), W(-3.5, 1.5), W(-3.5, -1.2), W(-0.9, -1.0), g(INSPECT.clone())];   // well behind the feet
+  // the target's direction (author, 19 XI): the whole stand - rifle, bag, shooter, instructor, spotter - turns about the
+  // bipod feet to the target, bearing in degrees, > 0 = right of the stand's axis; the start line stays. Every place
+  // derived from the stand frame is set again here (in place: the beats hold these objects)
+  function turnStand(bearing) {
+    const a = (bearing || 0) * Math.PI / 180, right0 = left0.clone().negate();
+    fwd.copy(fwd0).multiplyScalar(Math.cos(a)).addScaledVector(right0, Math.sin(a)).normalize(); left.set(fwd.z, 0, -fwd.x);
+    gongBase.copy(W(RANGE, 0)); gong.position.copy(gongBase); gong.rotation.y = yawOf(fwd.clone().negate()); gong.updateMatrixWorld(true); GC.copy(gong.localToWorld(V(0, 1.13, 0)));
+    aim.copy(GC).sub(feet.clone().add(V(0, 0.33, 0))).normalize();
+    qGround.setFromRotationMatrix(new THREE.Matrix4().lookAt(V(), aim, up)); pGround.copy(feet).sub(BIPOD_FOOT.clone().applyQuaternion(qGround));
+    bagTop.copy(RL(V(0, -0.118, -0.075))); bag.position.set(bagTop.x, bagTop.y - bagH, bagTop.z); bag.rotation.y = yawOf(fwd);
+    spotPos.copy(W(-0.35, 1.7)); spotter.position.copy(spotPos); spotter.rotation.y = yawOf(fwd) + Math.PI;
+    yawFwd = yawOf(fwd); KNEEL.copy(W(-0.85, 0.36)); KNEEL_YAW = yawOf(RL(V(0, 0, -0.45)).sub(KNEEL).setY(0));
+    eyeW.copy(RL(EYE)).addScaledVector(V(0, 0, 1).applyQuaternion(qGround), 0.07);
+    { const e = eyeProne.clone().applyAxisAngle(up, yawFwd); PRONE.copy(eyeW).sub(e); PRONE.y = hAt(PRONE.x, PRONE.z); }
+    INST.copy(W(-1.2, 2.6));
+    INSPECT.copy(RL(V(0.55, 0, -0.42)).setY(0)); INSPECT_YAW = yawOf(RL(V(0, 0, -0.43)).sub(INSPECT).setY(0));
+    [W(-1.8, 2.3), W(-3.5, 1.5), W(-3.5, -1.2), W(-0.9, -1.0), g(INSPECT.clone())].forEach((p, k) => INSPECT_ROUTE[k + 1].copy(p));
+  }
   function routeAt(pts, k) {
     const seg = pts.slice(1).map((p, i) => p.distanceTo(pts[i])), total = seg.reduce((a, b) => a + b, 0);
     let d = k * total, i = 0; while (i < seg.length - 1 && d > seg[i]) { d -= seg[i]; i++; }
@@ -684,7 +724,7 @@ export async function play(ctx) {
   const SHOT_BEATS = beats.filter(b => /s15\.flight|s16\.repeat/.test(b.say));
 
   const tl = new Timeline({ beats, manifest, audioDir: "demo/audio/scene1", audioQuery: "?v=" + Date.now(), init, sceneTitles: SCENES });
-  tl.beforeBeat = S => { S.man.kneelHinge = false; S.ov = {}; S.cam = null; S.scope = null; S.man.look = null; S.man.trigger = false; S.man.thumbK = 0; S.rifle.selK = undefined; S.man.curl = { R: 0.8, L: 0.3 }; S.props.kestrel = null; S.props.notebook = null; S.cycleT = null; S.man.lean = 0; S.inst.lean = 0; };   // hand-held props and the slow replay belong to their beat
+  tl.beforeBeat = S => { S.dirLine = false; S.man.kneelHinge = false; S.ov = {}; S.cam = null; S.scope = null; S.man.look = null; S.man.trigger = false; S.man.thumbK = 0; S.rifle.selK = undefined; S.man.curl = { R: 0.8, L: 0.3 }; S.props.kestrel = null; S.props.notebook = null; S.cycleT = null; S.man.lean = 0; S.inst.lean = 0; };   // hand-held props and the slow replay belong to their beat
   // absolute shot times (needed by beats after the shots: marks, swing, bolt)
   const SHOTS = [{ n: 0, t0: SHOT_BEATS[0].start + 0.25, slow: SLOW }, { n: 1, t0: SHOT_BEATS[1].start + 3.0 }, { n: 2, t0: SHOT_BEATS[1].start + 10.5 }];
   let TOF = BAL.tof, SOUND_BACK = RANGE / SOUND;
@@ -731,7 +771,7 @@ export async function play(ctx) {
     if (!TAB) TAB = await fetch("demo/ballistics_table.json" + ver).then(r => r.json());
     const { tableDope, rowAt, atmK } = await import("./training/conditions.js" + ver);
     COND = { ...c }; RANGE = c.range; AIM.forEach(a => { a[0] = 0; a[1] = 0; });   // a new attempt: no aim errors yet
-    gongBase.copy(W(RANGE, 0)); gong.position.copy(gongBase); gong.updateMatrixWorld(true); GC.copy(gong.localToWorld(V(0, 1.13, 0)));
+    turnStand(c.bearing ?? 0);                                          // also moves the gong to the range and bearing
     losDir.copy(GC).sub(RL(EYE)).normalize(); losRight.copy(losDir).cross(up).normalize(); losUp.copy(losRight).cross(losDir).normalize();
     if (view) { rows = BAL.rows; ELEV = 6.5; WIND = 1.6; TOF = BAL.tof; PLX_SET = 600; }
     else { const side = c.windFrom === 9 ? 1 : -1, d = tableDope(c, TAB);
@@ -739,10 +779,24 @@ export async function play(ctx) {
       rows = TAB.rows.map(r => { const k = atmK(c, TAB, r[0]); return [r[0], k.tof || r[1], -r[2] * k.drop, side * r[3] * k.drift * c.wind]; });
       ELEV = d.elev; WIND = d.wind; TOF = atmK(c, TAB, RANGE).tof; PLX_SET = RANGE; }
     SOUND_BACK = RANGE / SOUND; ARC = arcOf(); marksDrawn = -1; drawLcd();
-    if (windDir0) ctx.windDirU.value.copy(windDir0).multiplyScalar(c.windFrom === 9 ? 1 : -1);
+    // the wind is reckoned from the line of fire: it turns with the stand
+    if (windDir0) { const a = Math.atan2(fwd0.x * fwd.z - fwd0.z * fwd.x, fwd0.x * fwd.x + fwd0.z * fwd.z);
+      ctx.windDirU.value.copy(windDir0).multiplyScalar(c.windFrom === 9 ? 1 : -1).rotateAround(new THREE.Vector2(), a); }
     // time of day and weather of the attempt (author, 18 XI); the view conditions: 10:00, clear
     if (window.__sim && window.__sim.setHour) window.__sim.setHour(c.hour ?? 10, 8);
     if (window.__sim && window.__sim.setWeather) window.__sim.setWeather(c.weather || "clear", RANGE);
+  }
+  // the drawn target must be in sight from the prone eye (author, 19 XI): no ground and no tree crown on the line to the
+  // gong's centre; crowns as cylinders a little wider than the drawn ones (index.html, trees)
+  function sightBlocked(c) {
+    const a = (c.bearing ?? 0) * Math.PI / 180, d = fwd0.clone().multiplyScalar(Math.cos(a)).addScaledVector(left0, -Math.sin(a)).normalize(), r = c.range;
+    const ey = hAt(fp.x, fp.z) + 0.35, tx = fp.x + d.x * r, tz = fp.z + d.z * r, ty = hAt(tx, tz) + 1.13, yAt = s => ey + (ty - ey) * s / r;
+    for (let s = 4; s < r - 2; s += 2) if (hAt(fp.x + d.x * s, fp.z + d.z * s) > yAt(s) - 0.05) return "teren";
+    const tr = window.__sim && window.__sim.trees; if (!tr) return false;
+    for (let i = 0; i < tr.length; i += 4) { const px = tr[i] - fp.x, pz = tr[i + 1] - fp.z, h = tr[i + 3], s = px * d.x + pz * d.z; if (s < 2 || s > r + 2) continue;
+      const cr = (h < 7 ? h * 0.28 : Math.max(1.2, h * 0.19)) * 1.15 + 0.3; if (Math.abs(px * d.z - pz * d.x) > cr) continue;
+      const gy = hAt(tr[i], tr[i + 1]), y = yAt(Math.min(s, r)); if (y > gy - 0.5 && y < gy + h + 0.3) return "drzewo"; }
+    return false;
   }
   const setDial = d => { ELEV = d.elev; WIND = d.wind; ARC = arcOf(); };       // the student's own settings (wind > 0 = left)
   const setQuiz = on => { QUIZ = !!on; };
@@ -834,9 +888,10 @@ export async function play(ctx) {
     hl = id; }
   // a yellow blink, about once a second, from barely lit to bright (author, 18 XI: the element to click blinks)
   const pulseHighlight = () => { if (!hl) return; const k = 0.08 + 0.8 * (0.5 + 0.5 * Math.sin(performance.now() / 1000 * 2 * Math.PI * 1.1)); for (const [m] of hlMats) m.emissive.setRGB(k, k * 0.82, 0); };
-  // the range card's target point (svg 200, 210 - range*0.19) on the screen, when the card is shown
+  // the range card's target point on the screen, when the card is shown
   function cardTargetPx(c) { const box = [...OV.el.children].find(d => d.style.display !== "none" && d.textContent.includes("KARTA OGNIA")); const svg = box && box.querySelector("svg"); if (!svg) return null;
-    const r = svg.getBoundingClientRect(); return { x: r.left + 200 * r.width / 400, y: r.top + (210 - (c || COND).range * 0.19) * r.height / 232, box }; }
+    const cc = c || COND, rr = cc.range * 0.19, a = (cc.bearing ?? 0) * Math.PI / 180, r = svg.getBoundingClientRect();
+    return { x: r.left + (200 + rr * Math.sin(a)) * r.width / 400, y: r.top + (210 - rr * Math.cos(a)) * r.height / 232, box }; }
   function updateLabel() {
     if (!labelsOn || !mouseIn) { tip.style.display = "none"; return; }
     mouse.set(mx / innerWidth * 2 - 1, -(my / innerHeight) * 2 + 1); ray.setFromCamera(mouse, camera);
@@ -1184,6 +1239,7 @@ export async function play(ctx) {
     // overlays
     for (const id of ["glove", "dial", "note", "windLook", "kes", "f", "card", "sel", "slow", "arc"]) { const o = QUIZ && (id === "dial" || id === "kes") ? null : S.ov[id]; OV.show(id, o ? o[0] : null, o ? o[1] : ""); }   /* QUIZ: the turret dial and the Kestrel readout panel (read it off the 3D model) would give the settings away */
     // camera
+    dirLine.visible = false;
     if (freeCam) { freeMove(); controls.update(); setScope(null); man.m.visible = rifle.visible = capF.visible = capR.visible = true; camera.fov = 50; camera.updateProjectionMatrix(); setFocus(controls.target); return; }
     const c = S.cam || { kind: "follow", off: [2.5, 1.2, 1.5], look: [0, 0.8, 0] };
     if (fpp && c.kind !== "scope") { setScope(null); man.m.visible = rifle.visible = capF.visible = capR.visible = true; fppCamera(S); setFocus(null); return; }
@@ -1224,7 +1280,7 @@ export async function play(ctx) {
       camera.position.copy(lcd).add(V(0, 0.24, 0)).addScaledVector(V(0, -1, 0).applyQuaternion(kestrel.quaternion).setY(0).normalize(), 0.07);
       camera.up.set(0, 1, 0); camera.fov = 34; camera.lookAt(lcd); focusPt = lcd; }
     else if (c.kind === "gongClose") { const toShooter = fp.clone().sub(gongBase).normalize(); camera.position.copy(GC).addScaledVector(toShooter, 1.5); camera.fov = 40; camera.lookAt(GC); focusPt = GC.clone(); }
-    if (focusPt && c.kind !== "gong") {                              // handheld drift + slow push-in towards the subject
+    if (focusPt && c.kind !== "gong" && !c.still) {                 // handheld drift + slow push-in towards the subject (still: a steady view)
       const d = camera.position.distanceTo(focusPt), uB = S.beat ? Math.min(1, S.tInBeat / S.beat.dur) : 0;
       camera.position.lerp(focusPt, 0.07 * ease(uB));
       const k = 0.012 * Math.max(0.3, Math.min(3, d));
@@ -1233,6 +1289,7 @@ export async function play(ctx) {
     }
     const gy = hAt(camera.position.x, camera.position.z) + 0.08; if (camera.position.y < gy) camera.position.y = gy;
     camera.updateProjectionMatrix();
+    dirLine.visible = !!S.dirLine; if (dirLine.visible) updateDirLine(camera.position);
     const close = ["rifle", "hand", "head"].includes(c.kind);
     fill.intensity = close ? 1.6 : 0; if (close && focusPt) { fill.position.copy(camera.position).add(V(0, 0.4, 0)); fill.target.position.copy(focusPt); }
     setFocus(c.focus || focusPt, c.aperture ?? (c.kind === "gong" ? 0.0005 : c.focusExact ? 0.0035 : null), !!c.focusExact);   // gong insert: tracer stays visible; rack focus: sharp exactly at the point
@@ -1345,7 +1402,7 @@ export async function play(ctx) {
       await startTask(mode, { tl, panel, demo: window.__demo, tab, canvas: ctx.renderer.domElement, chapterTitles: SCENES }, opts); }
     catch (e) { console.error("task", e); } finally { taskOn = false; } }   // sound needs a click first: the scene starts on it
   window.__demo = { COL, runTask: (...a) => runTask(...a), tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt,
-    setConditions, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; }, setKestrelInset: c => kesInset.set(c), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
+    setConditions, sightBlocked, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; }, setKestrelInset: c => kesInset.set(c), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
 }
 
 // ---------- rear bag ----------

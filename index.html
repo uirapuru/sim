@@ -576,7 +576,7 @@ function setView(v) {
   yaw = -AZ; pitch = v === "stand" ? -0.02 : 0;
 }
 document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
-window.__sim = { camera, look: (x, y, z, tx, ty, tz) => { mode = "fly"; camera.position.set(x, y, z); const d = new THREE.Vector3(tx - x, ty - y, tz - z).normalize(); yaw = Math.atan2(-d.x, -d.z); pitch = Math.asin(d.y); }, meta, setView, setHour, setWeather, snap: () => { if (!window.__camOverride) camera.rotation.set(pitch, yaw, 0, "YXZ"); placeGrass(camera.position.x, camera.position.z); if (window.__renderOverride) window.__renderOverride(); else renderer.render(scene, camera); return renderer.domElement.toDataURL("image/jpeg", 0.85); }, stop: () => renderer.setAnimationLoop(null) };
+window.__sim = { camera, trees: tr, look: (x, y, z, tx, ty, tz) => { mode = "fly"; camera.position.set(x, y, z); const d = new THREE.Vector3(tx - x, ty - y, tz - z).normalize(); yaw = Math.atan2(-d.x, -d.z); pitch = Math.asin(d.y); }, meta, setView, setHour, setWeather, snap: () => { if (!window.__camOverride) camera.rotation.set(pitch, yaw, 0, "YXZ"); placeGrass(camera.position.x, camera.position.z); if (window.__renderOverride) window.__renderOverride(); else renderer.render(scene, camera); return renderer.domElement.toDataURL("image/jpeg", 0.85); }, stop: () => renderer.setAnimationLoop(null) };
 setView("firing_point");
 // the demo scene (author, 18 XI): while it loads, a standing view from the firing point back to the stand, instead of the
 // prone view downrange with a red distance post filling the frame

@@ -57,9 +57,10 @@ test("scoreExam: 80% passes, missing answers count as wrong", () => {
   assert.equal(scoreExam(steps, seven).passed, false);
 });
 
-test("steps cover every narration key exactly once, in order", () => {
+test("steps play the narration keys in order, each once; only the trainee's own search is skipped", () => {
   const keys = JSON.parse(readFileSync(new URL("../audio/scene1/manifest.json", import.meta.url))).map(m => m.key);
-  assert.deepEqual(STEPS.flatMap(s => s.play), keys);
+  const SKIPPED = ["s08.target", "s08.scan", "s08.strips"], OWN = ["s11.dir"];   // OWN: beats without narration
+  assert.deepEqual(STEPS.flatMap(s => s.play).filter(k => !OWN.includes(k)), keys.filter(k => !SKIPPED.includes(k)));
 });
 
 test("every step has the fields its kind needs", () => {
@@ -71,14 +72,38 @@ test("every step has the fields its kind needs", () => {
     else if (s.kind === "mark") assert.ok(resolve(s.mark, C).overlay === "card", s.id);
     else if (s.kind === "fire") assert.ok(Array.isArray(s.shots) && s.shots.length, s.id);
     else if (s.kind === "find") assert.ok(s.hold, s.id);
+    else if (s.kind === "wind") assert.ok(s.tol != null && resolve(s.options, C).includes(resolve(s.correct, C)), s.id);
     else assert.equal(s.kind, "dial", s.id);
   }
   assert.equal(new Set(STEPS.map(s => s.id)).size, STEPS.length);
 });
 
-test("range card mark follows the range", () => {
+test("range card mark follows the range and the bearing", () => {
   const m = STEPS.find(s => s.kind === "mark");
   assert.deepEqual(resolve(m.mark, C), { overlay: "card", x: 200, y: 210 - 625 * 0.19 });
+  const p = resolve(m.mark, { range: 500, bearing: 30 });
+  assert.ok(Math.abs(p.x - (200 + 95 * 0.5)) < 1e-9 && Math.abs(p.y - (210 - 95 * Math.cos(Math.PI / 6))) < 1e-9, JSON.stringify(p));
+});
+
+test("one wind question: speed within the tolerance and the right side", async () => {
+  const { checkWind } = await import("./check.js");
+  const st = STEPS.find(s => s.id === "wind"), c = { wind: 3.4, windFrom: 3 };
+  assert.equal(checkWind(st, "3,5", 3, c), true);
+  assert.equal(checkWind(st, "3.8", 3, c), false);
+  assert.equal(checkWind(st, "3.4", 9, c), false);
+  assert.equal(checkWind(st, "", 3, c), false);
+  assert.equal(checkWind(st, "3.4", null, c), false);
+  assert.ok(!STEPS.some(s => s.id === "windSpeed" || s.id === "windFrom"));
+});
+
+test("direction: the clock hours stay in order and the drawn hour is the answer", async () => {
+  const { choiceOptions, checkChoice } = await import("./check.js");
+  const st = STEPS.find(s => s.id === "direction");
+  assert.deepEqual(choiceOptions(st, C, rng), ["Godzina 10", "Godzina 11", "Godzina 12", "Godzina 1", "Godzina 2"]);
+  assert.equal(checkChoice(st, "Godzina 1", { clock: 1 }), true);
+  assert.equal(checkChoice(st, "Godzina 12", { clock: 11 }), false);
+  const i = STEPS.indexOf(st);
+  assert.ok(STEPS[i - 1].id === "range" && STEPS[i + 1].id === "card", "after the range, before the card");
 });
 
 test("choice options are shuffled: the right one is not always first", async () => {

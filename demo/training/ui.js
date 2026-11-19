@@ -31,6 +31,10 @@ const CSS = `
 #tkNotes .t { font-weight: 700; margin-bottom: 4px; }
 #tkCenter { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 118; pointer-events: none; background: rgba(12,14,16,.85);
   color: #ffd84d; font: 600 22px/1.35 system-ui; padding: 14px 26px; border-radius: 10px; text-align: center; box-shadow: 0 4px 18px rgba(0,0,0,.45); }
+.tkDot { position: fixed; z-index: 126; display: none; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #c0242a; border: 2px solid #fff;
+  pointer-events: none; box-shadow: 0 1px 2px rgba(0,0,0,.5); transition: transform .18s ease-out, box-shadow .18s ease-out; }
+.tkDot.air { transform: translateY(-10px) scale(1.35); box-shadow: 0 16px 10px -2px rgba(0,0,0,.35); transition: none; }
+#tkBar button:disabled { opacity: .45; cursor: default; }
 #tkRing { position: fixed; z-index: 125; pointer-events: none; border: 3px solid #ffd84d; border-radius: 50%; box-shadow: 0 0 12px #ffd84d; }
 #tkModal { position: fixed; inset: 0; z-index: 160; background: rgba(0,0,0,.55); display: grid; place-items: center; font: 15px/1.45 system-ui; }
 #tkModal ul.summary { list-style: none; padding: 0; margin: 10px 0 0; }
