@@ -268,7 +268,7 @@
   {
    "file": "shot_1.0.mp3",
    "speaker": "narrator",
-   "duration": 5.84
+   "duration": 5.52
   }
  ],
  "scan_2": [
@@ -282,7 +282,7 @@
   {
    "file": "shot_2.0.mp3",
    "speaker": "narrator",
-   "duration": 5.76
+   "duration": 5.52
   }
  ],
  "scan_3": [
@@ -296,7 +296,7 @@
   {
    "file": "shot_3.0.mp3",
    "speaker": "narrator",
-   "duration": 5.92
+   "duration": 5.52
   }
  ],
  "_next": [

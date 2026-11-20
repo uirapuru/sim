@@ -135,8 +135,8 @@ export const STEPS = [
     hint: "Wstajesz, karabin na pas, i na komendę wracasz na linię wyjściową." },
 ];
 
-// scenario 2 (author, 20 XI): three targets from the nearest to the farthest, each to be hit twice; two misses on a
-// target and the trainee goes on to the next one. The procedure is the same: the steps of one target (finding it,
+// scenario 2 (author, 20 XI): three targets from the nearest to the farthest, two shots at each; a target is hit
+// when both shots hit, then the trainee goes on to the next one either way. The procedure is the same: the steps of one target (finding it,
 // measuring, the range card, the settings, the shots) are repeated for each; the wind and the safety only once
 export const SCENARIOS = [{ n: 1, title: "Jeden cel, trzy strzały" }, { n: 2, title: "Trzy cele, po dwa trafienia" }];
 const PER_TARGET = ["scan", "zoom", "height", "width", "wind", "range", "direction", "card", "parallax", "dial", "safety", "shot"];
@@ -153,7 +153,9 @@ export function scenarioSteps(n) {
     if (id === "scan") { s.voice = t === 0 ? "scan_s2" : `scan_${t + 1}`; s.ask = t === 0 ? "Przed tobą trzy gongi. Strzelasz od najbliższego do najdalszego. Znajdź w lunecie najbliższy i najedź na niego krzyżem."
       : `Cel nr ${t + 1}: następny co do odległości. Znajdź go w lunecie i najedź na niego krzyżem.`;
       s.hint = "Cele leżą na różnych odległościach i kierunkach. Porównaj ich wielkość w lunecie: bliższy gong jest większy."; }
-    if (id === "shot") { s.voice = `shot_${t + 1}`; s.ask = `Cel nr ${t + 1}: trafiasz dwa razy. Po dwóch pudłach przechodzisz do następnego celu.`;
+    // two shots a target (author, 20 XI): hit only when both hit; then on to the next one either way
+    if (id === "shot") { s.voice = `shot_${t + 1}`; s.ask = `Cel nr ${t + 1}: masz dwa strzały. Cel jest trafiony, gdy oba trafią.`; s.shots = [0, 1];
+      s.hint = "Patrz na wykres oddechu i strzelaj w pauzie po wydechu. Po pudle popraw nastawy przed drugim strzałem: pocisk wyżej – zmniejsz wysokość, w lewo – poprawka w prawo.";
       s.stop = { hits: 2, misses: 2 }; s.last = t === 2; s.play = t === 2 ? ["s16.group", "s16.empty"] : ["s16.group"]; }
     out.push(s); }
   return out.concat(STEPS.slice(after));

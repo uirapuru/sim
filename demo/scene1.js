@@ -76,11 +76,20 @@ export async function play(ctx) {
   const dirMat = new THREE.MeshBasicMaterial({ color: 0xffd400, transparent: true, depthWrite: false, fog: false });
   const dirLine = new THREE.Mesh(new THREE.BufferGeometry(), dirMat); dirLine.visible = false; dirLine.frustumCulled = false; dirLine.renderOrder = 5; scene.add(dirLine);
   const DIR_A = new THREE.Color(0xffd400), DIR_B = new THREE.Color(0xff4d1a);
+  // the target blinks yellow while its direction is judged (author, 20 XI: at 400-900 m the gong is a few pixels):
+  // a ring of fixed size on the screen over the gong, and the plate itself lit yellow
+  const dirMark = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d");
+    x.strokeStyle = "#fff"; x.lineWidth = 6; x.beginPath(); x.arc(32, 32, 24, 0, 7); x.stroke(); x.fillStyle = "#fff"; x.beginPath(); x.arc(32, 32, 7, 0, 7); x.fill();
+    const t = new THREE.CanvasTexture(c), m = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, color: 0xffd400, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: false, fog: false }));
+    m.scale.setScalar(0.05); m.renderOrder = 6; m.visible = false; scene.add(m); return m; })();
   function updateDirLine(camPos) {
     const a = RL(MUZZLE).addScaledVector(fwd, 1.0), b = a.clone().lerp(GC, 0.985), len = a.distanceTo(b), k = 0.0022;
     dirLine.geometry.dispose(); dirLine.geometry = new THREE.CylinderGeometry(k * camPos.distanceTo(b), k * camPos.distanceTo(a), len, 12, 1, true);
     dirLine.position.copy(a).lerp(b, 0.5); dirLine.quaternion.setFromUnitVectors(V(0, 1, 0), b.clone().sub(a).normalize());
-    const p = 0.5 + 0.5 * Math.sin(performance.now() / 1000 * 2 * Math.PI * 1.2); dirMat.color.copy(DIR_A).lerp(DIR_B, p); dirMat.opacity = 0.7 + 0.3 * p; }
+    const p = 0.5 + 0.5 * Math.sin(performance.now() / 1000 * 2 * Math.PI * 1.2); dirMat.color.copy(DIR_A).lerp(DIR_B, p); dirMat.opacity = 0.7 + 0.3 * p;
+    const on = Math.sin(performance.now() / 1000 * 2 * Math.PI * 1.5) > 0;          // blinks 1.5 times a second
+    dirMark.position.copy(GC); dirMark.material.opacity = on ? 1 : 0.15; dirMark.scale.setScalar(on ? 0.05 : 0.04);
+    plate.material[0].emissive.setRGB(on ? 0.9 : 0, on ? 0.75 : 0, 0); }
   let marksDrawn = -1;
   function drawMarks(hits) {                                 // red paint, grey splash where bullets struck
     if (hits.length === marksDrawn) return; marksDrawn = hits.length;
@@ -103,7 +112,7 @@ export async function play(ctx) {
     if (withMarks) x.drawImage(gongCanvas, 0, 0); else { x.fillStyle = "#b3161b"; x.fillRect(0, 0, 256, 512); }
     const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
     const c = gong.clone(true);
-    c.traverse(o => { if (o.isMesh && Array.isArray(o.material) && o.material[0].map === gongTex) { o.material = [o.material[0].clone(), o.material[1]]; o.material[0].map = t; }
+    c.traverse(o => { if (o.isMesh && Array.isArray(o.material) && o.material[0].map === gongTex) { o.material = [o.material[0].clone(), o.material[1]]; o.material[0].map = t; o.material[0].emissive.setRGB(0, 0, 0); }
       if (o.isGroup && o !== c) o.rotation.set(0, 0, 0); });          // the plate hangs still
     scene.add(c); return c;
   }
@@ -1357,7 +1366,7 @@ export async function play(ctx) {
     // overlays
     for (const id of ["glove", "dial", "note", "windLook", "kes", "f", "card", "sel", "slow", "arc"]) { const o = QUIZ && (id === "dial" || id === "kes") ? null : S.ov[id]; OV.show(id, o ? o[0] : null, o ? o[1] : ""); }   /* QUIZ: the turret dial and the Kestrel readout panel (read it off the 3D model) would give the settings away */
     // camera
-    dirLine.visible = false;
+    dirLine.visible = dirMark.visible = false;
     if (freeCam) { freeMove(); controls.update(); setScope(null); man.m.visible = rifle.visible = capF.visible = capR.visible = true; camera.fov = 50; camera.updateProjectionMatrix(); setFocus(controls.target); return; }
     const c = liveCam || S.cam || { kind: "follow", off: [2.5, 1.2, 1.5], look: [0, 0.8, 0] };
     camKindNow = c.kind; drawChart();
@@ -1408,7 +1417,7 @@ export async function play(ctx) {
     }
     const gy = hAt(camera.position.x, camera.position.z) + 0.08; if (camera.position.y < gy) camera.position.y = gy;
     camera.updateProjectionMatrix();
-    dirLine.visible = !!S.dirLine; if (dirLine.visible) updateDirLine(camera.position);
+    dirLine.visible = dirMark.visible = !!S.dirLine; if (dirLine.visible) updateDirLine(camera.position); else if (plate.material[0].emissive.r) plate.material[0].emissive.setRGB(0, 0, 0);
     const close = ["rifle", "hand", "head"].includes(c.kind);
     fill.intensity = close ? 1.6 : 0; if (close && focusPt) { fill.position.copy(camera.position).add(V(0, 0.4, 0)); fill.target.position.copy(focusPt); }
     setFocus(c.focus || focusPt, c.aperture ?? (c.kind === "gong" ? 0.0005 : c.focusExact ? 0.0035 : null), !!c.focusExact);   // gong insert: tracer stays visible; rack focus: sharp exactly at the point

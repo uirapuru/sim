@@ -192,7 +192,7 @@ export async function startTask(mode, ctx, opts = {}) {
           if (st.stop) count.textContent = `Cel nr ${st.tgt + 1} · trafienia ${nHit()}/${st.stop.hits} · pudła ${nMiss()}/${st.stop.misses} · naboje: ${ammo}`;   // the score at once
           if (over()) { demo.setAimSway(false); if (st.last !== false) demo.setKestrelInset(null);   // after the very last shot the Kestrel goes away
             const hits = res.filter(x => x.hit).length;
-            if (st.stop) view.feedback(hits >= st.stop.hits ? "Cel trafiony dwa razy." : ammo <= 0 ? "Magazynek pusty: koniec strzelania." : "Dwa pudła: przechodzisz do następnego celu.", hits >= st.stop.hits ? "ok" : "bad");
+            if (st.stop) view.feedback(hits >= st.stop.hits ? "Cel trafiony dwa razy." : `Cel nr ${(st.tgt ?? 0) + 1} pozostaje nietrafiony.${st.last ? "" : " Przechodzisz do następnego celu."}`, hits >= st.stop.hits ? "ok" : "bad");
             if (ammo <= 0 && Number.isFinite(ammo)) { outOfAmmoAt = st.tgt ?? 0; demo.setKestrelInset(null); }
             if (st.stop) await new Promise(r => setTimeout(r, 1200)); if (done) return;
             finish({ ok: hits >= 2, tgt: st.tgt ?? 0, given: res.map((x, i) => `${i + 1}: ${x.hit ? "trafienie" : "pudło"}`).join(", "), hinted, fireHits: res.map(x => x.hit), dials }); return; }
@@ -231,6 +231,12 @@ export async function startTask(mode, ctx, opts = {}) {
     if (st.kind === "fire" || st.kind === "find") return "";
     const d = tableDope(c, tab); return `ok. ${f1(d.elev)} ↑ · ${f1(Math.abs(d.wind))} ${d.wind >= 0 ? "L" : "P"}`;
   };
+  // scenario 2: each target trafiony (two hits) or nietrafiony (two misses - also after one hit), or skipped
+  const targetsText = () => !targets ? "" : `<p>${targets.map((t, i) => { const h = fireBy.get(i);
+    const st_ = !h ? (outOfAmmoAt != null && i > outOfAmmoAt ? "pominięty – brak amunicji" : "nie strzelano") : h.filter(Boolean).length >= 2 ? `<b class="ok">trafiony</b> (${h.length} strz.)` : `<b class="bad">nietrafiony</b> (${plural(h.filter(Boolean).length, "trafienie", "trafienia", "trafień")}, ${plural(h.filter(x => !x).length, "pudło", "pudła", "pudeł")})`;
+    return `Cel nr ${i + 1} (${t.range} m, godz. ${t.clock}): ${st_}`; }).join("<br>")}</p>`;
+  const plural = (n, one, few, many) => `${n} ${n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many}`;
+  const targetsHit = () => targets ? targets.filter((_, i) => (fireBy.get(i) || []).filter(Boolean).length >= 2).length : 0;
   const condText = () => `${targets ? `gongi na ${targets.map(t => t.range).join(", ")} m` : `gong na ${c0.range} m`}, wiatr ${f1(c0.wind)} m/s z godz. ${c0.windFrom}, godzina ${hourText(c0.hour ?? 10)}, ${WEATHER[c0.weather || "clear"]}, ${f1(c0.temp ?? 15)} °C, ${c0.pressure ?? 1010} hPa`;
 
   // ---- the run ----
@@ -264,7 +270,7 @@ export async function startTask(mode, ctx, opts = {}) {
       const rows = steps.map((s, k) => { const ok = answers.get(s.id) === true, has = answers.has(s.id);
         return `<tr><td>${k + 1}</td><td>${s.kind === "action" ? (s.ask || "") : resolve(s.ask, cAt.get(s.id) || c0)}</td><td class="${ok ? "ok" : "bad"}">${has ? log.get(s.id) : "brak odpowiedzi"}</td><td>${correctText(s)}</td><td>${s.hint}</td></tr>`; }).join("");
       await ui.modal(sc.passed ? "Egzamin zaliczony" : "Egzamin niezaliczony",
-        `<p><b>${sc.points}/${sc.total}</b> kroków poprawnie (${sc.percent}%), próg ${PASS}%. Czas: ${fmtTime(Math.min(window.__examMs ?? EXAM_MS, (window.__examMs ?? EXAM_MS) - (deadline - performance.now())))}${timedOut ? " (koniec czasu)" : ""}. Strzały do trafienia: ${shots || "–"}.</p>
+        `${targetsText()}<p><b>${sc.points}/${sc.total}</b> kroków poprawnie (${sc.percent}%), próg ${PASS}%. Czas: ${fmtTime(Math.min(window.__examMs ?? EXAM_MS, (window.__examMs ?? EXAM_MS) - (deadline - performance.now())))}${timedOut ? " (koniec czasu)" : ""}. Strzały do trafienia: ${shots || "–"}.</p>
          <p>Warunki: ${condText()}.</p>
          <table><tr><th>#</th><th>Polecenie</th><th>Twoja odpowiedź</th><th>Poprawnie</th><th>Wyjaśnienie</th></tr>${rows}</table>`, [{ text: "Zamknij", main: true, value: 1 }]);
       window.__lastExam = { ...sc, shots, timedOut, conditions: c };
@@ -278,8 +284,8 @@ export async function startTask(mode, ctx, opts = {}) {
         return { good, html: `<li class="${good ? "ok" : "bad"}">${good ? "✓" : "✗"} ${s.kind === "action" ? (s.ask || "") : resolve(s.ask, cAt.get(s.id) || c0)}${why ? ` <span class="why">– ${why}</span>` : ""}</li>` }; });
       const nGood = rows.filter(r => r.good).length, nBad = rows.length - nGood, passed = !nShots || hits > 0;
       await ui.modal(passed ? "Trening zaliczony" : "Trening niezaliczony",
-        `<p><b class="ok">${nGood} dobrze</b> · <b class="bad">${nBad} z błędem</b>${nShots ? ` · trafienia: <b>${hits}/${nShots}</b>` : ""}${nShots && !hits ? " – bez trafienia trening nie jest zaliczony" : ""}.</p>
-         <p>Warunki: ${condText()}.${targets ? "" : ` Strzały do pierwszego trafienia: ${shots || "–"}.`}</p>
+        `<p><b class="ok">${nGood} dobrze</b> · <b class="bad">${nBad} z błędem</b>${targets ? ` · cele trafione: <b>${targetsHit()}/3</b>` : nShots ? ` · trafienia: <b>${hits}/${nShots}</b>` : ""}${nShots && !hits ? " – bez trafienia trening nie jest zaliczony" : ""}.</p>
+         <p>Warunki: ${condText()}.${targets ? "" : ` Strzały do pierwszego trafienia: ${shots || "–"}.`}</p>${targetsText()}
          <ul class="summary">${rows.map(r => r.html).join("")}</ul>`, [{ text: "Zamknij", main: true, value: 1 }]);
       window.__lastTrain = { nGood, nBad, hits, nShots, passed, shots, conditions: c };
     }
