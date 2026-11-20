@@ -69,3 +69,14 @@ test("rowAt interpolates", () => {
   const r = rowAt(tab, 602.5), a = rowAt(tab, 600), b = rowAt(tab, 605);
   assert.ok(Math.abs(r[2] - (a[2] + b[2]) / 2) < 1e-9);
 });
+
+test("scenario 2 targets: nearest first, 100 m apart, within 300-900 m, the three hours", async () => {
+  const { rollTargets } = await import("./conditions.js");
+  for (let i = 0; i < 500; i++) {
+    const t = rollTargets(rng);
+    assert.equal(t.length, 3);
+    assert.ok(t[0].range >= 300 && t[2].range <= 900 && t[1].range - t[0].range >= 100 && t[2].range - t[1].range >= 100, JSON.stringify(t));
+    assert.deepEqual(t.map(x => x.clock).sort(), [1, 11, 12]);
+    for (const x of t) assert.ok(Math.abs(x.bearing - { 11: -30, 12: 0, 1: 30 }[x.clock]) <= 6, JSON.stringify(x));
+  }
+});

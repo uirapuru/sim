@@ -5,8 +5,8 @@
 // modules are loaded with this file's version query, so a new deploy never mixes with cached old ones
 const V_ = new URL(import.meta.url).search;
 const { withLead } = await import("../engine.js" + V_);
-const [{ STEPS, ACTION_POOL, SECTIONS, sectionOf }, { resolve, checkAction, checkMark, checkNumber, checkWind, checkChoice, choiceOptions, optionsFor, scoreExam, parseNumber },
-  { rollConditions, VIEW_CONDITIONS, tableDope, WEATHER, hourText }, { makeUi, f1 }] = await Promise.all(["steps_scene1", "check", "conditions", "ui"].map(n => import(`./${n}.js${V_}`)));
+const [{ STEPS, ACTION_POOL, SECTIONS, sectionOf, SCENARIOS, scenarioSteps }, { resolve, checkAction, checkMark, checkNumber, checkWind, checkChoice, choiceOptions, optionsFor, scoreExam, parseNumber },
+  { rollConditions, rollTargets, VIEW_CONDITIONS, tableDope, WEATHER, hourText }, { makeUi, f1 }] = await Promise.all(["steps_scene1", "check", "conditions", "ui"].map(n => import(`./${n}.js${V_}`)));
 
 const EXAM_MS = 45 * 60 * 1000, PASS = 80;   // author, 18 XI: 45 min for the whole exam, animations included
 const firstSentence = t => (t.match(/^.*?[.!?](\s|$)/) || [t])[0].trim();
@@ -32,30 +32,41 @@ export async function startTask(mode, ctx, opts = {}) {
       await new Promise(r => setTimeout(r, 150));
     } }
   // start dialog
-  let from = 1;
+  let from = 1, scenario = 1;
   if (!exam) {
     const sel = document.createElement("div");
     sel.innerHTML = `<p>Wykonujesz procedurę sam, krok po kroku. Wskaż w scenie element i wybierz czynność, a przy zadaniach rachunkowych wpisz wynik. Gdy utkniesz, użyj „Daj podpowiedź”.</p>
-      <p>Odległość do gongu, wiatr, godzina strzelania, pogoda, temperatura i ciśnienie są losowane na to podejście. Tabele balistyczne są dla 15 °C i 1010 hPa: w innych warunkach uwzględnij poprawkę.</p><label>Zacznij od rozdziału: <select>${SECTIONS.map(x => `<option value="${x.n}">${x.n}. ${x.title}</option>`).join("")}</select></label>`;
-    const v = opts.from ?? await ui.modal("Trening", sel, [{ text: "Anuluj", value: null }, { text: "Start", main: true, value: () => +sel.querySelector("select").value }]);
-    if (v == null) { ui.destroy(); return; } from = v;
+      <p>Odległość do gongu, wiatr, godzina strzelania, pogoda, temperatura i ciśnienie są losowane na to podejście. Tabele balistyczne są dla 15 °C i 1010 hPa: w innych warunkach uwzględnij poprawkę.</p><label>Scenariusz: <select class="scn">${SCENARIOS.map(x => `<option value="${x.n}">${x.n}. ${x.title}</option>`).join("")}</select></label><br><br><label>Zacznij od rozdziału: <select class="from">${SECTIONS.map(x => `<option value="${x.n}">${x.n}. ${x.title}</option>`).join("")}</select></label>`;
+    const v = opts.from != null ? { from: opts.from, scenario: opts.scenario ?? 1 } : await ui.modal("Trening", sel, [{ text: "Anuluj", value: null }, { text: "Start", main: true, value: () => ({ from: +sel.querySelector(".from").value, scenario: +sel.querySelector(".scn").value }) }]);
+    if (v == null) { ui.destroy(); return; } from = v.from; scenario = v.scenario;
   } else {
-    const go = opts.from ?? await ui.modal("Egzamin", `<p>Całą procedurę wykonujesz sam, bez podpowiedzi. Masz ${Math.round((window.__examMs ?? EXAM_MS) / 60000) || "<1"} min. Zaliczenie od ${PASS}% poprawnych kroków.</p>
-      <p>Każdy krok ma jedną próbę. Czy odpowiedź była dobra, zobaczysz w omówieniu na końcu. Odległość do gongu, wiatr, godzina strzelania, pogoda, temperatura i ciśnienie są losowane. Tabele balistyczne są dla 15 °C i 1010 hPa: w innych warunkach uwzględnij poprawkę.</p>`, [{ text: "Anuluj", value: null }, { text: "Start", main: true, value: 1 }]);
-    if (go == null) { ui.destroy(); return; }
+    const exSel = document.createElement("div"); exSel.innerHTML = `<p>Całą procedurę wykonujesz sam, bez podpowiedzi. Masz ${Math.round((window.__examMs ?? EXAM_MS) / 60000) || "<1"} min. Zaliczenie od ${PASS}% poprawnych kroków.</p>
+      <p>Każdy krok ma jedną próbę. Czy odpowiedź była dobra, zobaczysz w omówieniu na końcu. Odległość do gongu, wiatr, godzina strzelania, pogoda, temperatura i ciśnienie są losowane. Tabele balistyczne są dla 15 °C i 1010 hPa: w innych warunkach uwzględnij poprawkę.</p><label>Scenariusz: <select class="scn">${SCENARIOS.map(x => `<option value="${x.n}">${x.n}. ${x.title}</option>`).join("")}</select></label>`;
+    const go = opts.from != null ? { scenario: opts.scenario ?? 1 } : await ui.modal("Egzamin", exSel, [{ text: "Anuluj", value: null }, { text: "Start", main: true, value: () => ({ scenario: +exSel.querySelector(".scn").value }) }]);
+    if (go == null) { ui.destroy(); return; } scenario = go.scenario;
   }
   // the target is drawn somewhere the shooter can see it: no trees or ground on the line of sight (author, 19 XI)
   let c = opts.conditions || rollConditions();
   for (let k = 0; !opts.conditions && k < 60 && demo.sightBlocked && demo.sightBlocked(c); k++) c = rollConditions();
+  // scenario 2: three targets, all in sight; the conditions of target t are the attempt's with its range and hour
+  let targets = null; const c0 = c, cFor = t => ({ ...c0, ...targets[t], target: t });
+  if (scenario === 2) { targets = opts.targets || rollTargets();
+    for (let k = 0; !opts.targets && k < 80 && demo.sightBlocked && targets.some(t => demo.sightBlocked({ ...c0, ...t })); k++) targets = rollTargets();
+    c = cFor(0); }
+  const cAt = new Map();   // step id -> the conditions it was asked in (the targets differ)
   let tick = null;
   try {
   await demo.setConditions(c); demo.setKestrelInset(c);
-  const steps = exam ? STEPS : STEPS.filter(s => sectionOf(s.chapter).n >= from);
+  let curT = null; if (targets) { demo.setTargets(targets); demo.setRounds(6); curT = 0; await demo.activateTarget(0, c); }
+  // scenario 2: six rounds for the three targets; when they run out, the targets left are skipped
+  let ammo = targets ? 6 : Infinity, outOfAmmoAt = null;
+  const all = scenarioSteps(scenario), from_ = scenario === 2 ? Math.min(from, 2) : from;   // scenario 2 starts at the latest with the first target
+  const steps = exam ? all : all.filter(s => sectionOf(s.chapter).n >= from_);
   panel.setLocked(true); panel.setSubs(false); tl.voice = false; tl.commands = true; tl.fast = true;
   if (exam) { panel.setLabels(false); panel.lockLabels(true); }
 
   let stopped = false, cancelAsk = null, timedOut = false;
-  const answers = new Map(), log = new Map(), trainLog = new Map(); let shots = 0, fireHits = [];
+  const answers = new Map(), log = new Map(), trainLog = new Map(); let shots = 0, fireHits = []; const fireBy = new Map();
   // the exam clock runs all the time, the shooter's animations included (about 11 min of the 45)
   let deadline = performance.now() + (window.__examMs ?? EXAM_MS), animT0 = null;
   const clock = exam ? ui.clock() : null;
@@ -73,7 +84,7 @@ export async function startTask(mode, ctx, opts = {}) {
       const askText = exam && st.kind === "action" ? "Wykonaj następną czynność." : resolve(st.ask, c);
       const sec = sectionOf(st.chapter), meta = `Krok ${i + 1}/${n} · rozdział ${sec.n}: ${sec.title} · ${chapterTitles[st.chapter] || ""}`;
       let hinted = false;
-      say(exam && st.kind === "action" ? "_next" : st.id);
+      say(exam && st.kind === "action" ? "_next" : st.voice ?? st.baseId ?? st.id);
       const view = ui.show({ meta, ask: askText, onQuit: quit, side: true, onHint: exam ? null : () => { hinted = true; view.feedback(st.hint, "info"); hint(st); } });
       timerEl = exam ? view.timer : null;
       // training: a wrong answer is counted (the summary marks the step red) and the student tries again
@@ -159,7 +170,9 @@ export async function startTask(mode, ctx, opts = {}) {
         const count = document.createElement("div"); count.className = "fireCount"; const extra = document.createElement("div"); extra.className = "row"; extra.style.flexBasis = "100%";
         view.body.append(tip, count, extra);
         const n = st.shots.length, res = [], dials = []; let k = 0, held = null, busy = false;
-        const showCount = () => { count.textContent = `Strzał ${k + 1} z ${n}`; };
+        const nHit = () => res.filter(x => x.hit).length, nMiss = () => res.filter(x => !x.hit).length;
+        const showCount = () => { count.textContent = st.stop ? `Cel nr ${st.tgt + 1} · strzał ${k + 1} · trafienia ${nHit()}/${st.stop.hits} · pudła ${nMiss()}/${st.stop.misses} · naboje: ${ammo}` : `Strzał ${k + 1} z ${n}`; };
+        const over = () => k >= n || ammo <= 0 || (st.stop && (nHit() >= st.stop.hits || nMiss() >= st.stop.misses));
         const arm = () => { showCount(); demo.setAimSway(true); demo.breathChart(true); busy = false; };
         const choose = (text, buttons) => new Promise(r => { extra.innerHTML = ""; const q = document.createElement("div"); q.className = "dragTip"; q.textContent = text; extra.append(q);
           for (const [label, v, main] of buttons) { const b = document.createElement("button"); b.textContent = label; if (main) b.className = "main"; b.onclick = () => { extra.innerHTML = ""; r(v); }; extra.append(b); } });
@@ -175,10 +188,14 @@ export async function startTask(mode, ctx, opts = {}) {
         onDown = e => { if (e.button !== 0 || e.target !== canvas || busy || done) return; e.preventDefault(); held = [e.clientX, e.clientY]; demo.setAimHold(true); };
         onMove = e => { if (!held) return; demo.aimNudge(e.clientX - held[0], e.clientY - held[1]); held = [e.clientX, e.clientY]; };
         onUp = async e => { if (!held) return; held = null; busy = true; demo.breathChart(false);
-          const r = await demo.fireLive(st.shots[k]); if (done) return; res.push(r); k++;
-          if (k >= n) { demo.setAimSway(false); demo.setKestrelInset(null);
+          const r = await demo.fireLive(st.shots[k]); if (done) return; res.push(r); k++; ammo--;
+          if (st.stop) count.textContent = `Cel nr ${st.tgt + 1} · trafienia ${nHit()}/${st.stop.hits} · pudła ${nMiss()}/${st.stop.misses} · naboje: ${ammo}`;   // the score at once
+          if (over()) { demo.setAimSway(false); if (st.last !== false) demo.setKestrelInset(null);   // after the very last shot the Kestrel goes away
             const hits = res.filter(x => x.hit).length;
-            finish({ ok: hits >= 2, given: res.map((x, i) => `${i + 1}: ${x.hit ? "trafienie" : "pudło"}`).join(", "), hinted, fireHits: res.map(x => x.hit), dials }); return; }
+            if (st.stop) view.feedback(hits >= st.stop.hits ? "Cel trafiony dwa razy." : ammo <= 0 ? "Magazynek pusty: koniec strzelania." : "Dwa pudła: przechodzisz do następnego celu.", hits >= st.stop.hits ? "ok" : "bad");
+            if (ammo <= 0 && Number.isFinite(ammo)) { outOfAmmoAt = st.tgt ?? 0; demo.setKestrelInset(null); }
+            if (st.stop) await new Promise(r => setTimeout(r, 1200)); if (done) return;
+            finish({ ok: hits >= 2, tgt: st.tgt ?? 0, given: res.map((x, i) => `${i + 1}: ${x.hit ? "trafienie" : "pudło"}`).join(", "), hinted, fireHits: res.map(x => x.hit), dials }); return; }
           if (r.hit) { view.feedback("Trafienie. Następny strzał.", "ok"); arm(); return; }
           view.feedback(`Pudło: pocisk poszedł ${where(r)} od środka celu.`, "bad");
           const v = await choose("Zmieniasz nastawy na lunecie?", [["Zmień nastawy", "change", true], ["Zostaw nastawy", "keep", false]]); if (done) return;
@@ -205,18 +222,23 @@ export async function startTask(mode, ctx, opts = {}) {
     if (st.kind === "mark") { const t = demo.cardTargetPx(c); if (t) ui.ring(t.x + 6, t.y - 4, 26); }
     if (st.kind === "dial") { const d = tableDope(c, tab); ui.notes(tab); }
   }
-  const correctText = st => {
+  const correctText = st => { const c = cAt.get(st.id) || c0;
     if (st.kind === "action") return st.anywhere ? st.action : `${demo.nameOf(st.target)} → ${st.action}`;
     if (st.kind === "choice") return resolve(st.correct, c);
     if (st.kind === "number") { const a = resolve(st.answer, c); return `${st.unit === "m" ? Math.round(a) : f1(a)} ${st.unit}`; }
     if (st.kind === "mark") return `cel na łuku ${c.range} m, na godzinie ${c.clock ?? 12}`;
     if (st.kind === "wind") return `${f1(c.wind)} m/s, ${resolve(st.correct, c).toLowerCase()}`;
+    if (st.kind === "fire" || st.kind === "find") return "";
     const d = tableDope(c, tab); return `ok. ${f1(d.elev)} ↑ · ${f1(Math.abs(d.wind))} ${d.wind >= 0 ? "L" : "P"}`;
   };
+  const condText = () => `${targets ? `gongi na ${targets.map(t => t.range).join(", ")} m` : `gong na ${c0.range} m`}, wiatr ${f1(c0.wind)} m/s z godz. ${c0.windFrom}, godzina ${hourText(c0.hour ?? 10)}, ${WEATHER[c0.weather || "clear"]}, ${f1(c0.temp ?? 15)} °C, ${c0.pressure ?? 1010} hPa`;
 
   // ---- the run ----
   for (let i = 0; i < steps.length && !stopped && !timedOut; i++) {
     const st = steps[i], hold = st.hold || { key: st.play[0], u: 0 };
+    if (outOfAmmoAt != null && st.tgt != null && st.tgt > outOfAmmoAt) continue;
+    if (targets && st.tgt != null && st.tgt !== curT) { curT = st.tgt; c = cFor(curT); await demo.activateTarget(curT, c); }
+    cAt.set(st.id, c);
     tl.holdAt(hold.key, hold.u); demo.setQuiz(true);
     const a = await ask(st, i, steps.length);
     demo.setQuiz(false);
@@ -225,7 +247,7 @@ export async function startTask(mode, ctx, opts = {}) {
     if (!a) break;
     if (!answers.has(st.id)) { answers.set(st.id, a.ok); log.set(st.id, a.given); trainLog.set(st.id, a); }
     if (a.dial) demo.setDial(a.dial);
-    if (a.fireHits) { fireHits = a.fireHits; const f = a.fireHits.indexOf(true); shots = f < 0 ? 0 : f + 1; }   // shots to the first hit
+    if (a.fireHits) { fireBy.set(a.tgt ?? 0, a.fireHits); fireHits = [...fireBy.values()].flat(); const f = (fireBy.get(0) || []).indexOf(true); shots = f < 0 ? 0 : f + 1; }   // shots to the first hit
     // the question has just said the range command in the instructor's voice: the beat does not say it again
     const saidCmd = !(exam && st.kind === "action") && /^Komenda:/.test(typeof st.ask === "string" ? st.ask : "");   // the exam hides action questions
     tl.skipVoice = new Set(saidCmd ? [st.play[0]] : []);
@@ -240,10 +262,10 @@ export async function startTask(mode, ctx, opts = {}) {
     if (exam) {
       const sc = scoreExam(steps, answers);
       const rows = steps.map((s, k) => { const ok = answers.get(s.id) === true, has = answers.has(s.id);
-        return `<tr><td>${k + 1}</td><td>${s.kind === "action" ? (s.ask || "") : resolve(s.ask, c)}</td><td class="${ok ? "ok" : "bad"}">${has ? log.get(s.id) : "brak odpowiedzi"}</td><td>${correctText(s)}</td><td>${s.hint}</td></tr>`; }).join("");
+        return `<tr><td>${k + 1}</td><td>${s.kind === "action" ? (s.ask || "") : resolve(s.ask, cAt.get(s.id) || c0)}</td><td class="${ok ? "ok" : "bad"}">${has ? log.get(s.id) : "brak odpowiedzi"}</td><td>${correctText(s)}</td><td>${s.hint}</td></tr>`; }).join("");
       await ui.modal(sc.passed ? "Egzamin zaliczony" : "Egzamin niezaliczony",
         `<p><b>${sc.points}/${sc.total}</b> kroków poprawnie (${sc.percent}%), próg ${PASS}%. Czas: ${fmtTime(Math.min(window.__examMs ?? EXAM_MS, (window.__examMs ?? EXAM_MS) - (deadline - performance.now())))}${timedOut ? " (koniec czasu)" : ""}. Strzały do trafienia: ${shots || "–"}.</p>
-         <p>Warunki: gong na ${c.range} m, wiatr ${f1(c.wind)} m/s z godz. ${c.windFrom}, godzina ${hourText(c.hour ?? 10)}, ${WEATHER[c.weather || "clear"]}, ${f1(c.temp ?? 15)} °C, ${c.pressure ?? 1010} hPa.</p>
+         <p>Warunki: ${condText()}.</p>
          <table><tr><th>#</th><th>Polecenie</th><th>Twoja odpowiedź</th><th>Poprawnie</th><th>Wyjaśnienie</th></tr>${rows}</table>`, [{ text: "Zamknij", main: true, value: 1 }]);
       window.__lastExam = { ...sc, shots, timedOut, conditions: c };
     } else {
@@ -251,13 +273,13 @@ export async function startTask(mode, ctx, opts = {}) {
       // as right when the first shot hit. Hits: the procedure's three shots with the final settings; 0/3 fails
       const nShots = fireHits.length, hits = fireHits.filter(Boolean).length;
       const rows = steps.filter(s => trainLog.has(s.id)).map((s, k) => { const a = trainLog.get(s.id);
-        const good = s.kind === "dial" ? fireHits[0] === true : s.kind === "fire" ? (a.fireHits || []).filter(Boolean).length >= 2 : !a.misses && !a.hinted;
+        const good = s.kind === "dial" ? (fireBy.get(s.tgt ?? 0) || [])[0] === true : s.kind === "fire" ? (a.fireHits || []).filter(Boolean).length >= 2 : !a.misses && !a.hinted;
         const why = s.kind === "dial" ? (good ? "" : shots ? `trafienie dopiero za ${shots}. strzałem` : "żaden strzał nie trafił") : s.kind === "fire" ? `${(a.fireHits || []).filter(Boolean).length}/${(a.fireHits || []).length} w gong (${a.given})` : [a.misses ? `${a.misses} ${a.misses === 1 ? "błędna próba" : "błędne próby"}${a.firstWrong ? ` (najpierw: ${a.firstWrong})` : ""}` : "", a.hinted ? "z podpowiedzią" : ""].filter(Boolean).join(", ");
-        return { good, html: `<li class="${good ? "ok" : "bad"}">${good ? "✓" : "✗"} ${s.kind === "action" ? (s.ask || "") : resolve(s.ask, c)}${why ? ` <span class="why">– ${why}</span>` : ""}</li>` }; });
+        return { good, html: `<li class="${good ? "ok" : "bad"}">${good ? "✓" : "✗"} ${s.kind === "action" ? (s.ask || "") : resolve(s.ask, cAt.get(s.id) || c0)}${why ? ` <span class="why">– ${why}</span>` : ""}</li>` }; });
       const nGood = rows.filter(r => r.good).length, nBad = rows.length - nGood, passed = !nShots || hits > 0;
       await ui.modal(passed ? "Trening zaliczony" : "Trening niezaliczony",
         `<p><b class="ok">${nGood} dobrze</b> · <b class="bad">${nBad} z błędem</b>${nShots ? ` · trafienia: <b>${hits}/${nShots}</b>` : ""}${nShots && !hits ? " – bez trafienia trening nie jest zaliczony" : ""}.</p>
-         <p>Warunki: gong na ${c.range} m, wiatr ${f1(c.wind)} m/s z godz. ${c.windFrom}, godzina ${hourText(c.hour ?? 10)}, ${WEATHER[c.weather || "clear"]}, ${f1(c.temp ?? 15)} °C, ${c.pressure ?? 1010} hPa. Strzały do pierwszego trafienia: ${shots || "–"}.</p>
+         <p>Warunki: ${condText()}.${targets ? "" : ` Strzały do pierwszego trafienia: ${shots || "–"}.`}</p>
          <ul class="summary">${rows.map(r => r.html).join("")}</ul>`, [{ text: "Zamknij", main: true, value: 1 }]);
       window.__lastTrain = { nGood, nBad, hits, nShots, passed, shots, conditions: c };
     }

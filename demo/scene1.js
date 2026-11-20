@@ -94,6 +94,31 @@ export async function play(ctx) {
     gongTex.needsUpdate = true;
   }
   drawMarks([]);
+  // scenario 2 (author, 20 XI): three gongs. The working gong (hits, swing, marks) always stands at the target being
+  // fired at; the other targets are copies of it - fresh ones where the trainee has not fired yet, and a copy with
+  // its marks left behind where he has finished
+  const targetCopies = []; let ACTIVE = -1, CARD_PREV = [], LIVE_ONLY = false;
+  function gongCopy(withMarks) {
+    const cv = document.createElement("canvas"); cv.width = 256; cv.height = 512; const x = cv.getContext("2d");
+    if (withMarks) x.drawImage(gongCanvas, 0, 0); else { x.fillStyle = "#b3161b"; x.fillRect(0, 0, 256, 512); }
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+    const c = gong.clone(true);
+    c.traverse(o => { if (o.isMesh && Array.isArray(o.material) && o.material[0].map === gongTex) { o.material = [o.material[0].clone(), o.material[1]]; o.material[0].map = t; }
+      if (o.isGroup && o !== c) o.rotation.set(0, 0, 0); });          // the plate hangs still
+    scene.add(c); return c;
+  }
+  function placeAt(obj, tg) {
+    const a = (tg.bearing || 0) * Math.PI / 180, d = fwd0.clone().multiplyScalar(Math.cos(a)).addScaledVector(left0, -Math.sin(a)).normalize();
+    obj.position.copy(g(fp.clone().addScaledVector(d, tg.range))); obj.rotation.set(0, yawOf(d.clone().negate()), 0); obj.updateMatrixWorld(true);
+  }
+  function clearTargets() { for (const o of targetCopies) scene.remove(o.obj); targetCopies.length = 0; ACTIVE = -1; CARD_PREV = []; LIVE_ONLY = false; }
+  function setTargets(list) { clearTargets(); list.forEach((tg, i) => { if (i > 0) { const o = gongCopy(false); placeAt(o, tg); targetCopies.push({ i, obj: o, fresh: true }); } }); LIVE_ONLY = true; }
+  async function activateTarget(i, c) {
+    if (ACTIVE >= 0 && ACTIVE !== i) { const old = gongCopy(true); old.position.copy(gong.position); old.rotation.copy(gong.rotation); targetCopies.push({ i: ACTIVE, obj: old, fresh: false });
+      CARD_PREV.push({ range: RANGE, bearing: COND.bearing ?? 0, n: ACTIVE + 1 }); }
+    const k = targetCopies.findIndex(o => o.i === i && o.fresh); if (k >= 0) { scene.remove(targetCopies[k].obj); targetCopies.splice(k, 1); }
+    ACTIVE = i; await setConditions(c);
+  }
 
   // ---------- the stand: worn sand and sparse short grass (the range around it is mown, author 16 XI) ----------
   const standGrassTime = { value: 0 };
@@ -314,7 +339,9 @@ export async function play(ctx) {
   // held in the hand, the black magazine was hidden in the glove (author, 18 XI): it sits half its height higher,
   // along its own long axis, so half of it shows above the hand
   const MAG_RAISE = (() => { RP.mag.geometry.computeBoundingBox(); return RP.mag.geometry.boundingBox.getSize(V()).y * RP.mag.getWorldScale(V()).y / 2; })();
-  const rounds = []; for (let i = 0; i < 3; i++) { const r = new THREE.Group(); const cs = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.051, 10), new THREE.MeshStandardMaterial({ color: 0xc8a050, metalness: 0.8, roughness: 0.3 })); const bl = new THREE.Mesh(new THREE.ConeGeometry(0.0039, 0.022, 10), new THREE.MeshStandardMaterial({ color: 0xb06a3a, metalness: 0.8, roughness: 0.3 })); bl.position.y = 0.036; r.add(cs, bl); scene.add(r); rounds.push(r); }
+  // rounds loaded into the magazine: 3 in the lesson and scenario 1, 6 in scenario 2 (author, 20 XI; setRounds)
+  let NR = 3;
+  const rounds = []; for (let i = 0; i < 6; i++) { const r = new THREE.Group(); const cs = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.051, 10), new THREE.MeshStandardMaterial({ color: 0xc8a050, metalness: 0.8, roughness: 0.3 })); const bl = new THREE.Mesh(new THREE.ConeGeometry(0.0039, 0.022, 10), new THREE.MeshStandardMaterial({ color: 0xb06a3a, metalness: 0.8, roughness: 0.3 })); bl.position.y = 0.036; r.add(cs, bl); scene.add(r); rounds.push(r); }
   const caseEject = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.051, 8), new THREE.MeshStandardMaterial({ color: 0xc8a050, metalness: 0.8, roughness: 0.3 })); scene.add(caseEject);
 
   // tracer (stretched glowing cylinder) and muzzle flash
@@ -511,8 +538,8 @@ export async function play(ctx) {
   // 2 load the magazine on the start line
   cmd(2, "s02.cmd", S => { S.man.clips = [["Idle", 10, 1]]; });
   B(2, "s02.load", (S, u) => { S.man.clips = [["Idle", 10 + u * 3, 1]]; S.man.R = { man: [[-0.07, 1.06, 0.33], [0.0, 1.06, 0.38]] }; S.man.L = { man: [[0.10, 1.02, 0.31], [0.02, 1.04, 0.37]] };
-    S.props.mag = "chest"; S.props.rounds = 3; S.props.roundsInMag = Math.floor(seg(u, 0.1, 0.9) * 3.2); S.man.look = "mag"; S.cam = { kind: "follow", off: [0.25, 1.3, 1.25], look: [0.0, 1.0, 0.3], fov: 38 }; });
-  B(2, "s02.pouch", (S, u) => { S.man.clips = [["Idle", 13 + u * 3, 1]]; S.props.roundsInMag = 3; S.props.mag = u < 0.5 ? "chest" : null; S.man.L = u < 0.5 ? { man: [[0.10, 1.02, 0.31], [0.02, 1.04, 0.37]] } : null;
+    S.props.mag = "chest"; S.props.rounds = NR; S.props.roundsInMag = Math.floor(seg(u, 0.1, 0.9) * (NR + 0.2)); S.man.look = "mag"; S.cam = { kind: "follow", off: [0.25, 1.3, 1.25], look: [0.0, 1.0, 0.3], fov: 38 }; });
+  B(2, "s02.pouch", (S, u) => { S.man.clips = [["Idle", 13 + u * 3, 1]]; S.props.roundsInMag = NR; S.props.mag = u < 0.5 ? "chest" : null; S.man.L = u < 0.5 ? { man: [[0.10, 1.02, 0.31], [0.02, 1.04, 0.37]] } : null;
     S.cam = { kind: "follow", off: [0.9, 1.2, 1.6], look: [0.05, 0.95, 0] }; });
   // 3 to the firing line: walk, kneel, unsling, bipod, place
   cmd(3, "s03.cmd", S => { S.man.clips = [["Idle", 16, 1]]; });
@@ -562,7 +589,7 @@ export async function play(ctx) {
   // the hand brings the magazine from the pouch under the well, pushes it up into the well and gives it a light tug
   // down (author, 18 XI); magOff = the magazine's offset from its seated place, the hand holds its base (HANDS.magwell)
   const MAG_FAR = [0.22, -0.12, 0.32], MAG_BELOW = [0, -0.07, 0.005], MAG_HOLD = [[0.035, -0.17, -0.44], [0.004, -0.122, -0.47]];   // palm under the base
-  B(7, "s07.mag", (S, u) => { prone0(S); S.props.roundsInMag = 3;
+  B(7, "s07.mag", (S, u) => { prone0(S); S.props.roundsInMag = NR;
     const mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k), withMag = (off, key = "magwell") => { S.props.mag = "insert"; S.props.magOff = off;
       S.man.R = { at: MAG_HOLD.map(p => p.map((v, i) => v + off[i])), to: key }; };
     if (u < 0.12) { const k = ease(seg(u, 0, 0.12)), far = MAG_HOLD.map(p => p.map((v, i) => v + MAG_FAR[i]));   // empty hand off to the pouch
@@ -622,7 +649,7 @@ export async function play(ctx) {
     { key: "s11.dir", dur: 5 });
   // 12 range card
   // the target's point on the card (svg 400 x 232, the stand at 200, 210, 190 px = 1000 m), as cardPoint in steps_scene1.js
-  const cardPoint = brg => { const r = RANGE * 0.19, a = brg * Math.PI / 180; return { x: 200 + r * Math.sin(a), y: 210 - r * Math.cos(a) }; };
+  const cardPoint = (brg, rng = RANGE) => { const r = rng * 0.19, a = brg * Math.PI / 180; return { x: 200 + r * Math.sin(a), y: 210 - r * Math.cos(a) }; };
   const rangeCard = u => {
     const k = n => u >= n / 6;
     const arcs = [];
@@ -630,8 +657,8 @@ export async function play(ctx) {
     // the sector +-40 deg about the stand's axis (12 o'clock, the dashed line); the target at its range and bearing
     const SEC = 0.7, tp = cardPoint(COND.bearing ?? 0), brg = COND.bearing ?? 0, az = (AXIS_AZ + brg + 360) % 360;
     const svg = `<svg width="400" height="232"><line x1="200" y1="210" x2="${200 - 190 * Math.sin(SEC)}" y2="${210 - 190 * Math.cos(SEC)}" stroke="#333" stroke-width="1.5"/><line x1="200" y1="210" x2="${200 + 190 * Math.sin(SEC)}" y2="${210 - 190 * Math.cos(SEC)}" stroke="#333" stroke-width="1.5"/><line x1="200" y1="210" x2="200" y2="18" stroke="#7a8496" stroke-width="0.8" stroke-dasharray="4 4"/>${arcs.join("")}
-      <polygon points="200,203 194,214 206,214" fill="#1d2a40"/>${k(1) ? `<circle cx="${tp.x}" cy="${tp.y}" r="7" fill="#c0242a"/><text x="${tp.x + 12}" y="${tp.y + 4}" font-size="14" fill="#c0242a">1</text>` : ""}</svg>`;
-    const rows = [["Cel nr 1", "gong czerwony, tułów 0,5 × 1,0 m"], ["Kierunek", `${Math.round(az)}° (${Math.round(az * 6400 / 360)} mils) · godz. ${COND.clock ?? 12}`], ["Odległość", `${RANGE} m`], ["Warunki", `8 °C · 1005 hPa · RH 80 % · wiatr ${f1(COND.wind)} m/s z godz. ${COND.windFrom}`], ["Godzina / słońce", "13:00 · słońce z tyłu po prawej"], ["Nastawy", `wysokość ${f1(ELEV)} mrad ↑ · wiatr ${f1(Math.abs(WIND))} mrad ${WIND >= 0 ? "←" : "→"}`]];
+      <polygon points="200,203 194,214 206,214" fill="#1d2a40"/>${CARD_PREV.map(p_ => { const q = cardPoint(p_.bearing, p_.range); return `<circle cx="${q.x}" cy="${q.y}" r="6" fill="#c0242a" opacity=".55"/><text x="${q.x + 11}" y="${q.y + 4}" font-size="13" fill="#c0242a" opacity=".7">${p_.n}</text>`; }).join("")}${k(1) ? `<circle cx="${tp.x}" cy="${tp.y}" r="7" fill="#c0242a"/><text x="${tp.x + 12}" y="${tp.y + 4}" font-size="14" fill="#c0242a">${(COND.target ?? 0) + 1}</text>` : ""}</svg>`;
+    const rows = [[`Cel nr ${(COND.target ?? 0) + 1}`, "gong czerwony, tułów 0,5 × 1,0 m"], ["Kierunek", `${Math.round(az)}° (${Math.round(az * 6400 / 360)} mils) · godz. ${COND.clock ?? 12}`], ["Odległość", `${RANGE} m`], ["Warunki", `8 °C · 1005 hPa · RH 80 % · wiatr ${f1(COND.wind)} m/s z godz. ${COND.windFrom}`], ["Godzina / słońce", "13:00 · słońce z tyłu po prawej"], ["Nastawy", `wysokość ${f1(ELEV)} mrad ↑ · wiatr ${f1(Math.abs(WIND))} mrad ${WIND >= 0 ? "←" : "→"}`]];
     const tbl = rows.map(([a, b], i) => `<tr><td style="color:#666;padding-right:10px">${a}</td><td>${k(i + 1) ? b : ""}</td></tr>`).join("");
     return [`<div style="font:700 15px system-ui;color:#1d2a40;margin-bottom:4px">KARTA OGNIA · stanowisko Kijewo</div>${svg}<table style="font:16px/1.5 'Segoe Print','Comic Sans MS',cursive;color:#1d2a40">${tbl}</table>`,
       "right:4%;top:6%;background:#f4f1e8;border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.5);padding:12px 16px"];
@@ -752,7 +779,7 @@ export async function play(ctx) {
   // at full speed (the gong swings, the sand flies); SHOT_DIAL[n] the settings it was fired with
   const LIVE = [null, null, null], SHOT_DIAL = [null, null, null], LIVE_SLOW = 0.5;
   function liveT(n) { const e = (performance.now() - LIVE[n]) / 1000, k = (TOF + 0.15) / LIVE_SLOW; return e < k ? e * LIVE_SLOW : TOF + 0.15 + (e - k); }
-  function bt(sh, T) { if (LIVE[sh.n] != null) return liveT(sh.n);
+  function bt(sh, T) { if (LIVE[sh.n] != null) return liveT(sh.n); if (LIVE_ONLY) return -1;   // scenario 2: only the shots really fired
     const t = T - sh.t0, w = sh.slow; if (!w || t < w.from) return t; const len = (w.until - w.from) / w.factor;
     return t < w.from + len ? w.from + (t - w.from) * w.factor : w.until + (t - w.from - len); }
 
@@ -796,7 +823,7 @@ export async function play(ctx) {
     if (!TAB) TAB = await fetch("demo/ballistics_table.json" + ver).then(r => r.json());
     const { tableDope, rowAt, atmK } = await import("./training/conditions.js" + ver);
     COND = { ...c }; RANGE = c.range; AIM.forEach(a => { a[0] = 0; a[1] = 0; });   // a new attempt: no aim errors yet
-    LIVE.fill(null); SHOT_DIAL.fill(null); liveCam = null; userAim = [0, 0];
+    LIVE.fill(null); SHOT_DIAL.fill(null); liveCam = null; userAim = [0, 0]; if (view) { clearTargets(); NR = 3; }
     turnStand(c.bearing ?? 0);                                          // also moves the gong to the range and bearing
     losDir.copy(GC).sub(RL(EYE)).normalize(); losRight.copy(losDir).cross(up).normalize(); losUp.copy(losRight).cross(losDir).normalize();
     if (view) { rows = BAL.rows; ELEV = 6.5; WIND = 1.6; TOF = BAL.tof; PLX_SET = 600; }
@@ -1250,7 +1277,7 @@ export async function play(ctx) {
       magProp.position.copy(rifle.localToWorld(at.clone().sub(MAG_C))); magProp.quaternion.copy(rifle.quaternion);   // the mesh is in rifle coordinates
     }
     rounds.forEach((r, i) => {                                       // loose rounds in the left palm, pushed into the magazine one by one
-      r.visible = (S.props.mag === "hands" || S.props.mag === "chest") && i >= S.props.roundsInMag;
+      r.visible = (S.props.mag === "hands" || S.props.mag === "chest") && i >= S.props.roundsInMag && i < NR;
       if (S.props.mag === "chest") { r.position.copy(man.rig.B.LeftHand.localToWorld(V(0.0, 0.08, 0.03 + i * 0.014))); r.quaternion.copy(man.rig.B.LeftHand.getWorldQuaternion(new THREE.Quaternion())); }
       else { r.position.copy(rifle.localToWorld(V(-0.25 + i * 0.02, -0.235, -0.36))); r.quaternion.copy(qGround).multiply(new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), Math.PI / 2)); } });
     // gloved hands with fingers (hands.js): finger pose from what the hand is doing; the mitten is collapsed here
@@ -1499,7 +1526,7 @@ export async function play(ctx) {
     catch (e) { console.error("task", e); } finally { taskOn = false; } }   // sound needs a click first: the scene starts on it
   window.__demo = { COL, runTask: (...a) => runTask(...a), tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt,
     setConditions, sightBlocked, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; },
-    aimNudge, setAimHold: on => { holding = !!on; }, breathChart: on => { chartOn = !!on; drawChart(); }, fireLive, getDial: () => ({ elev: ELEV, wind: WIND }), setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
+    setTargets, activateTarget, setRounds: n => { NR = n; }, aimNudge, setAimHold: on => { holding = !!on; }, breathChart: on => { chartOn = !!on; drawChart(); }, fireLive, getDial: () => ({ elev: ELEV, wind: WIND }), setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
   { const kick = () => window.__redraw && window.__redraw.kick(600);
     for (const k of ["seek", "holdAt", "play", "pause", "playRange", "cancelRange"]) { const f = tl[k].bind(tl); tl[k] = (...a) => { kick(); return f(...a); }; }
     for (const [k, v] of Object.entries(Object.getOwnPropertyDescriptors(window.__demo))) if (typeof v.value === "function") {

@@ -16,6 +16,14 @@ export const WIND_HOURS = [1, 2, 3, 4, 5, 7, 8, 9, 10, 11];
 export const windFactor = h => Math.abs(Math.sin(h * Math.PI / 6));
 export const windSide = h => h > 6 ? 1 : -1;
 
+// scenario 2 (author, 20 XI): three gongs, each at its own range and clock hour; returned from the nearest to the
+// farthest (the order of fire). Ranges at least 100 m apart, hours 11, 12 and 1 in a random order
+export function rollTargets(rng = Math.random) {
+  const r1 = 300 + Math.floor(rng() * 151), r2 = r1 + 100 + Math.floor(rng() * (700 - r1 - 100 + 1)), r3 = r2 + 100 + Math.floor(rng() * (900 - r2 - 100 + 1));
+  const hours = [11, 12, 1]; for (let i = 2; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [hours[i], hours[j]] = [hours[j], hours[i]]; }
+  return [r1, r2, r3].map((range, i) => { const clock = hours[i]; return { range, clock, bearing: Math.round((CLOCK_DEG[clock] + (rng() - 0.5) * 12) * 10) / 10 }; });
+}
+
 // weather: "clear", "drizzle" (light rain under cloud), "mist" (the gong still in sight, paler) or now and then "snow"
 // (a little snow on the fields, light snowfall)
 export const WEATHER = { clear: "pogodnie", drizzle: "drobny deszcz", mist: "lekka mgła", snow: "lekki śnieg" };

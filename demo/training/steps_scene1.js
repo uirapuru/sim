@@ -135,4 +135,28 @@ export const STEPS = [
     hint: "Wstajesz, karabin na pas, i na komendę wracasz na linię wyjściową." },
 ];
 
+// scenario 2 (author, 20 XI): three targets from the nearest to the farthest, each to be hit twice; two misses on a
+// target and the trainee goes on to the next one. The procedure is the same: the steps of one target (finding it,
+// measuring, the range card, the settings, the shots) are repeated for each; the wind and the safety only once
+export const SCENARIOS = [{ n: 1, title: "Jeden cel, trzy strzały" }, { n: 2, title: "Trzy cele, po dwa trafienia" }];
+const PER_TARGET = ["scan", "zoom", "height", "width", "wind", "range", "direction", "card", "parallax", "dial", "safety", "shot"];
+const ONCE = new Set(["wind", "safety"]);
+export function scenarioSteps(n) {
+  if (n !== 2) return STEPS;
+  const by = id => STEPS.find(s => s.id === id), first = STEPS.findIndex(s => s.id === "scan"), after = STEPS.findIndex(s => s.id === "safe");
+  // six rounds for the three targets (author, 20 XI): the loading command says so
+  const out = STEPS.slice(0, first).map(s => s.id !== "load" ? s : { ...s, baseId: "load", voice: "load_s2", ask: "Komenda: „Sześcioma – magazynki ładuj!”.", action: "Załaduj sześć nabojów do magazynka",
+    hint: "Wciskasz naboje kolejno do magazynka, każdy do końca: sześć, po dwa na cel. Kliknij magazynek." });
+  for (let t = 0; t < 3; t++) for (const id of PER_TARGET) {
+    if (t > 0 && ONCE.has(id)) continue;
+    const s = { ...by(id), id: t ? `${id}_${t + 1}` : id, baseId: id, tgt: t };   // tgt: the target's number (target is the clicked part)
+    if (id === "scan") { s.voice = t === 0 ? "scan_s2" : `scan_${t + 1}`; s.ask = t === 0 ? "Przed tobą trzy gongi. Strzelasz od najbliższego do najdalszego. Znajdź w lunecie najbliższy i najedź na niego krzyżem."
+      : `Cel nr ${t + 1}: następny co do odległości. Znajdź go w lunecie i najedź na niego krzyżem.`;
+      s.hint = "Cele leżą na różnych odległościach i kierunkach. Porównaj ich wielkość w lunecie: bliższy gong jest większy."; }
+    if (id === "shot") { s.voice = `shot_${t + 1}`; s.ask = `Cel nr ${t + 1}: trafiasz dwa razy. Po dwóch pudłach przechodzisz do następnego celu.`;
+      s.stop = { hits: 2, misses: 2 }; s.last = t === 2; s.play = t === 2 ? ["s16.group", "s16.empty"] : ["s16.group"]; }
+    out.push(s); }
+  return out.concat(STEPS.slice(after));
+}
+
 export const ACTION_POOL = [...new Set(STEPS.filter(s => s.kind === "action").map(s => s.action))];

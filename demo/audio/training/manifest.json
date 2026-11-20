@@ -250,6 +250,55 @@
    "duration": 0.96
   }
  ],
+ "load_s2": [
+  {
+   "file": "load_s2.0.mp3",
+   "speaker": "instructor",
+   "duration": 2.24
+  }
+ ],
+ "scan_s2": [
+  {
+   "file": "scan_s2.0.mp3",
+   "speaker": "narrator",
+   "duration": 8.16
+  }
+ ],
+ "shot_1": [
+  {
+   "file": "shot_1.0.mp3",
+   "speaker": "narrator",
+   "duration": 5.84
+  }
+ ],
+ "scan_2": [
+  {
+   "file": "scan_2.0.mp3",
+   "speaker": "narrator",
+   "duration": 6.48
+  }
+ ],
+ "shot_2": [
+  {
+   "file": "shot_2.0.mp3",
+   "speaker": "narrator",
+   "duration": 5.76
+  }
+ ],
+ "scan_3": [
+  {
+   "file": "scan_3.0.mp3",
+   "speaker": "narrator",
+   "duration": 6.48
+  }
+ ],
+ "shot_3": [
+  {
+   "file": "shot_3.0.mp3",
+   "speaker": "narrator",
+   "duration": 5.92
+  }
+ ],
  "_next": [
   {
    "file": "_next.0.mp3",

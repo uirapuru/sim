@@ -117,3 +117,17 @@ test("the range question does not hold on the formula (it shows the answer)", ()
   const st = STEPS.find(s => s.id === "range");
   assert.ok(st.hold && !st.hold.key.startsWith("s11."), JSON.stringify(st.hold));
 });
+
+test("scenario 2: three targets, each measured and fired at; wind and safety once; fire stops at two hits or two misses", async () => {
+  const { scenarioSteps } = await import("./steps_scene1.js");
+  const s2 = scenarioSteps(2), ids = s2.map(s => s.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.equal(s2.filter(s => s.baseId === "shot").length, 3);
+  assert.equal(s2.filter(s => s.baseId === "wind").length, 1);
+  assert.equal(s2.filter(s => s.baseId === "safety").length, 1);
+  assert.deepEqual(s2.filter(s => s.baseId === "dial").map(s => s.tgt), [0, 1, 2]);
+  for (const s of s2.filter(s => s.baseId === "shot")) assert.deepEqual(s.stop, { hits: 2, misses: 2 });
+  assert.deepEqual(s2.filter(s => s.kind === "fire").map(s => s.last), [false, false, true]);
+  assert.equal(ids[ids.length - 1], "back");
+  assert.equal(scenarioSteps(1), STEPS);
+});
