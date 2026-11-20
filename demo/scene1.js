@@ -71,7 +71,7 @@ export async function play(ctx) {
   const plate = new THREE.Mesh(plateGeo, [new THREE.MeshStandardMaterial({ map: gongTex, roughness: 0.6, metalness: 0.2 }), new THREE.MeshStandardMaterial({ color: 0x7a1010 })]);
   plate.position.set(0, -0.82, 0.006); plate.rotation.y = Math.PI; plate.castShadow = true; pivot.add(plate);
   gong.updateMatrixWorld(true); const GC = gong.localToWorld(V(0, 1.13, 0));   // plate centre (world), the aiming point (moved by setConditions)
-  // direction line (author, 19 XI): from in front of the muzzle to just short of the gong, pulsing yellow-orange; a cone
+  // direction line (author, 19 XI; 20 XI: along the stand's axis, 12 o'clock), pulsing yellow-orange; a cone
   // whose radius grows with the distance from the camera, so it is equally thick on the screen all the way
   const dirMat = new THREE.MeshBasicMaterial({ color: 0xffd400, transparent: true, depthWrite: false, fog: false });
   const dirLine = new THREE.Mesh(new THREE.BufferGeometry(), dirMat); dirLine.visible = false; dirLine.frustumCulled = false; dirLine.renderOrder = 5; scene.add(dirLine);
@@ -83,7 +83,9 @@ export async function play(ctx) {
     const t = new THREE.CanvasTexture(c), m = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, color: 0xffd400, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: false, fog: false }));
     m.scale.setScalar(0.05); m.renderOrder = 6; m.visible = false; scene.add(m); return m; })();
   function updateDirLine(camPos) {
-    const a = RL(MUZZLE).addScaledVector(fwd, 1.0), b = a.clone().lerp(GC, 0.985), len = a.distanceTo(b), k = 0.0022;
+    // the stand's axis, 12 o'clock (author, 20 XI): from in front of the stand out to the target's range; a target at
+    // another hour stands clear of the line, the trainee judges the angle between them
+    const a = W0(2.0, 0, 0.35), b = W0(RANGE * 0.985, 0, 1.13), len = a.distanceTo(b), k = 0.0022;
     dirLine.geometry.dispose(); dirLine.geometry = new THREE.CylinderGeometry(k * camPos.distanceTo(b), k * camPos.distanceTo(a), len, 12, 1, true);
     dirLine.position.copy(a).lerp(b, 0.5); dirLine.quaternion.setFromUnitVectors(V(0, 1, 0), b.clone().sub(a).normalize());
     const p = 0.5 + 0.5 * Math.sin(performance.now() / 1000 * 2 * Math.PI * 1.2); dirMat.color.copy(DIR_A).lerp(DIR_B, p); dirMat.opacity = 0.7 + 0.3 * p;

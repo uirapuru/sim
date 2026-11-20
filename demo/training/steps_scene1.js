@@ -91,9 +91,9 @@ export const STEPS = [
   // direction by eye (author, 19 XI): the view from behind the shooter along the stand's axis, a pulsing line to the
   // target; the target's place is drawn with the conditions
   { id: "direction", chapter: 11, kind: "choice", ordered: true, hold: { key: "s11.dir", u: 0.3 },
-    ask: "Określ na oko kierunek do celu. Patrzysz wzdłuż osi stanowiska, czyli na godzinę 12.",
+    ask: "Określ na oko kierunek do migającego celu. Linia pokazuje godzinę 12, czyli oś stanowiska.",
     options: ["Godzina 10", "Godzina 11", "Godzina 12", "Godzina 1", "Godzina 2"], correct: c => `Godzina ${c.clock ?? 12}`, play: ["s11.dir"],
-    hint: "Godzina 12 to kierunek na wprost stanowiska. Jedna godzina to 30°: godzina 1 to 30° w prawo, godzina 11 to 30° w lewo." },
+    hint: "Linia to godzina 12, kierunek na wprost stanowiska. Porównaj z nią cel: jedna godzina to 30°, godzina 1 to 30° w prawo, godzina 11 to 30° w lewo." },
   { id: "card", chapter: 12, kind: "mark", tol: 12, mark: c => ({ overlay: "card", ...cardPoint(c) }),
     ask: "Zaznacz cel na karcie ognia.", play: ["s12.card", "s12.target", "s12.weather", "s12.sun"],
     hint: "Łuki są co 100 m, środek dołu karty to twoje stanowisko, a pionowa oś to godzina 12. Postaw punkt na łuku twojej odległości, w kierunku, który określiłeś." },
@@ -160,7 +160,7 @@ export function scenarioSteps(n) {
       hint: "Odległość [m] = wysokość celu 1,0 m × 1000 / odczyt [mil]." }));
   }
   out.push(mk("wind"));
-  for (const t of T) out.push(mk("direction", t, { voice: `direction_s2_${nr(t)}`, ask: `Cel nr ${nr(t)}: określ na oko kierunek. Patrzysz wzdłuż osi stanowiska, czyli na godzinę 12.` }));
+  for (const t of T) out.push(mk("direction", t, { voice: `direction_s2_${nr(t)}`, ask: `Cel nr ${nr(t)}: określ na oko kierunek do migającego celu. Linia pokazuje godzinę 12.` }));
   for (const t of T) out.push(mk("card", t, { voice: `card_s2_${nr(t)}`, ask: `Zaznacz cel nr ${nr(t)} na karcie ognia.`, angleOnly: true, play: t === 2 ? ["s12.card", "s12.target", "s12.weather", "s12.sun"] : ["s12.card"],
     hint: "Liczy się kierunek: środek dołu karty to twoje stanowisko, pionowa oś to godzina 12, jedna godzina to 30°. Odległość na karcie może być przybliżona." }));
   for (const t of T) {
