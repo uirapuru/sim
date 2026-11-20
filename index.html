@@ -179,24 +179,38 @@ function gridMesh(arr, w, h, cell, x0, z0) {
   geo.computeVertexNormals();
   return geo;
 }
-// every step-th height sample: lo terrain (far 8 m, near 2 m cells instead of 2 m and 1 m)
-function gridMeshStep(arr, w, h, cell, x0, z0, step) {
-  if (step === 1) return gridMesh(arr, w, h, cell, x0, z0);
-  const w2 = Math.floor((w - 1) / step) + 1, h2 = Math.floor((h - 1) / step) + 1, sub = new Uint16Array(w2 * h2);
-  for (let r = 0; r < h2; r++) for (let c = 0; c < w2; c++) sub[r * w2 + c] = arr[r * step * w + c * step];
-  const geo = new THREE.PlaneGeometry((w2 - 1) * cell * step, (h2 - 1) * cell * step, w2 - 1, h2 - 1);
-  geo.rotateX(-Math.PI / 2); geo.translate(x0 + (w2 - 1) * cell * step / 2 + cell / 2, 0, z0 + (h2 - 1) * cell * step / 2 + cell / 2);
-  const p = geo.attributes.position; for (let i = 0; i < p.count; i++) p.setY(i, sub[i] / 100);
-  geo.computeVertexNormals(); return geo;
+// terrain in tiles (author, 20 XI: draw only what is on the screen): the grid of every step-th height sample (lo:
+// far 8 m, near 2 m cells instead of 2 m and 1 m) cut into TILES x TILES meshes, so three.js leaves out the tiles
+// outside the view. Tiles share their edge rows; normals come from the whole grid, so the seams do not show
+const TILES = 8;
+function gridTiles(arr, w, h, cell, x0, z0, step) {
+  const w2 = Math.floor((w - 1) / step) + 1, h2 = Math.floor((h - 1) / step) + 1, d = cell * step;
+  const H_ = (r, c) => arr[Math.min(h2 - 1, Math.max(0, r)) * step * w + Math.min(w2 - 1, Math.max(0, c)) * step] / 100;
+  const cuts = n => Array.from({ length: TILES + 1 }, (_, i) => Math.round(i * (n - 1) / TILES));
+  const cs = cuts(w2), rs = cuts(h2), out = [];
+  for (let ti = 0; ti < TILES; ti++) for (let tj = 0; tj < TILES; tj++) {
+    const c0 = cs[tj], c1 = cs[tj + 1], r0 = rs[ti], r1 = rs[ti + 1], nw = c1 - c0 + 1, nh = r1 - r0 + 1;
+    const pos = new Float32Array(nw * nh * 3), nrm = new Float32Array(nw * nh * 3), uv = new Float32Array(nw * nh * 2), idx = [];
+    for (let r = r0, k = 0; r <= r1; r++) for (let c = c0; c <= c1; c++, k++) {
+      pos[k * 3] = x0 + c * d + cell / 2; pos[k * 3 + 1] = H_(r, c); pos[k * 3 + 2] = z0 + r * d + cell / 2;
+      const nx = -(H_(r, c + 1) - H_(r, c - 1)) / (2 * d), nz = -(H_(r + 1, c) - H_(r - 1, c)) / (2 * d), L = Math.hypot(nx, 1, nz);
+      nrm[k * 3] = nx / L; nrm[k * 3 + 1] = 1 / L; nrm[k * 3 + 2] = nz / L;
+      uv[k * 2] = c / (w2 - 1); uv[k * 2 + 1] = 1 - r / (h2 - 1); }
+    for (let r = 0; r < nh - 1; r++) for (let c = 0; c < nw - 1; c++) {      // as PlaneGeometry: a b d, b c d
+      const a = c + nw * r, b = c + nw * (r + 1), cc = c + 1 + nw * (r + 1), dd = c + 1 + nw * r; idx.push(a, b, dd, b, cc, dd); }
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
+    g.setAttribute("uv", new THREE.BufferAttribute(uv, 2)); g.setIndex(nw * nh > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1));
+    g.computeBoundingSphere(); g.computeBoundingBox(); out.push(g); }
+  return out;
 }
 const terrainGeo = { lo: null, hi: null };   // built when first needed: a phone never builds the 4 million triangles
-const terrainFor = q => terrainGeo[q] ??= { far: gridMeshStep(heights, GW, GH, CELL, 0, 0, q === "hi" ? 1 : 4), near: gridMeshStep(nearH, NEAR.grid, NEAR.grid, 1, NEAR.x0, NEAR.z0, q === "hi" ? 1 : 2) };
+const terrainFor = q => terrainGeo[q] ??= { far: gridTiles(heights, GW, GH, CELL, 0, 0, q === "hi" ? 1 : 4), near: gridTiles(nearH, NEAR.grid, NEAR.grid, 1, NEAR.x0, NEAR.z0, q === "hi" ? 1 : 2) };
 const farMat = terrainMaterial(await tex(T + "orto.jpg"));
 farMat.polygonOffset = true; farMat.polygonOffsetFactor = 6; farMat.polygonOffsetUnits = 6;
-const far = new THREE.Mesh(terrainFor(QUALITY).far, farMat);
-far.position.y = -0.25; far.receiveShadow = true;
-const near = new THREE.Mesh(terrainFor(QUALITY).near, terrainMaterial(await tex(T + "orto_near.jpg")));
-near.receiveShadow = true;
+const nearMat = terrainMaterial(await tex(T + "orto_near.jpg"));
+const tileGroup = (geos, mat) => { const g = new THREE.Group(); for (const geo of geos) { const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; g.add(m); } return g; };
+const far = tileGroup(terrainFor(QUALITY).far, farMat), near = tileGroup(terrainFor(QUALITY).near, nearMat);
+far.position.y = -0.25;
 scene.add(far, near);
 
 // orthophoto pixels for colour sampling (grass)
@@ -288,24 +302,32 @@ function crownGeometry(detail = 3) {        // irregular blob of a Scots pine cr
   g.computeVertexNormals(); return g;
 }
 const crownGeo = { hi: crownGeometry(3), lo: crownGeometry(0) };
-const crowns = new THREE.InstancedMesh(crownGeo[QUALITY], new THREE.MeshLambertMaterial({ map: needleTex }), nTrees);
+const crownMat = new THREE.MeshLambertMaterial({ map: needleTex });
 const trunkGeo = new THREE.CylinderGeometry(0.1, 0.17, 1, 6); trunkGeo.translate(0, 0.5, 0);
 const trunkGeoLo = new THREE.CylinderGeometry(0.1, 0.17, 1, 3, 1, true); trunkGeoLo.translate(0, 0.5, 0);
-const trunks = new THREE.InstancedMesh(QUALITY === "hi" ? trunkGeo : trunkGeoLo, new THREE.MeshLambertMaterial({ color: 0x6e5444 }), nTrees);
+const trunkMat = new THREE.MeshLambertMaterial({ color: 0x6e5444 });
+// trees in 200 m squares, one instanced mesh each (author, 20 XI: draw only what is on the screen): a square out of
+// the view is left out as a whole; the random draws stay in the same order, so the forest looks the same
+const crowns = [], trunks = [];
 {
+  const CHUNK = 200, chunks = new Map();
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), col = new THREE.Color();
   for (let i = 0; i < nTrees; i++) {
     const x = tr[i * 4], z = tr[i * 4 + 1], h = tr[i * 4 + 3], g = hAt(x, z);
     const young = h < 7;
     const crownH = young ? h * 0.8 : h * (0.32 + 0.14 * rnd()), crownR = young ? h * 0.28 : Math.max(1.2, h * (0.13 + 0.06 * rnd()));
     q.setFromEuler(new THREE.Euler((rnd() - 0.5) * 0.12, rnd() * 6.28, (rnd() - 0.5) * 0.12));
-    m.compose(p.set(x, g + h - crownH, z), q, s.set(crownR, crownH, crownR * (0.8 + 0.4 * rnd()))); crowns.setMatrixAt(i, m);
-    crowns.setColorAt(i, col.setHSL(0.24 + 0.06 * rnd(), 0.30 + 0.1 * rnd(), 0.24 + 0.08 * rnd(), THREE.SRGBColorSpace));
-    m.compose(p.set(x, g - 0.3, z), q, s.set(0.6 + h / 25, h - crownH * 0.6 + 0.3, 0.6 + h / 25)); trunks.setMatrixAt(i, m);
+    const key = Math.floor(x / CHUNK) + "," + Math.floor(z / CHUNK); let ch = chunks.get(key); if (!ch) chunks.set(key, ch = { crown: [], color: [], trunk: [] });
+    m.compose(p.set(x, g + h - crownH, z), q, s.set(crownR, crownH, crownR * (0.8 + 0.4 * rnd()))); ch.crown.push(m.clone());
+    ch.color.push(col.setHSL(0.24 + 0.06 * rnd(), 0.30 + 0.1 * rnd(), 0.24 + 0.08 * rnd(), THREE.SRGBColorSpace).clone());
+    m.compose(p.set(x, g - 0.3, z), q, s.set(0.6 + h / 25, h - crownH * 0.6 + 0.3, 0.6 + h / 25)); ch.trunk.push(m.clone());
   }
+  for (const ch of chunks.values()) {
+    const cm = new THREE.InstancedMesh(crownGeo[QUALITY], crownMat, ch.crown.length), tm = new THREE.InstancedMesh(QUALITY === "hi" ? trunkGeo : trunkGeoLo, trunkMat, ch.trunk.length);
+    ch.crown.forEach((mm, i) => { cm.setMatrixAt(i, mm); cm.setColorAt(i, ch.color[i]); }); ch.trunk.forEach((mm, i) => tm.setMatrixAt(i, mm));
+    cm.computeBoundingSphere(); tm.computeBoundingSphere();
+    cm.castShadow = tm.castShadow = cm.receiveShadow = true; crowns.push(cm); trunks.push(tm); scene.add(cm, tm); }
 }
-crowns.castShadow = trunks.castShadow = crowns.receiveShadow = true;
-scene.add(crowns, trunks);
 
 // lo: no shadows (the shadow map is not drawn at all), no grass tufts (the orthophoto is the ground), low-poly trees,
 // coarser terrain, fewer pixels; scene scripts read window.__quality (scene1.js: no depth-of-field pass in lo)
@@ -314,12 +336,13 @@ function applyQuality(q) {
   renderer.setPixelRatio(pixelRatioFor(q)); renderer.setSize(innerWidth, innerHeight);
   sun.castShadow = hi && !LITE;
   grass.visible = hi; if (hi) grassCenter.set(1e9, 1e9);           // placed again around the camera on the next frame
-  crowns.geometry = crownGeo[q]; trunks.geometry = hi ? trunkGeo : trunkGeoLo;
-  const tg = terrainFor(q); far.geometry = tg.far; near.geometry = tg.near; far.position.y = hi ? -0.25 : -0.45;
+  for (const c of crowns) c.geometry = crownGeo[q]; for (const t of trunks) t.geometry = hi ? trunkGeo : trunkGeoLo;
+  for (const c of [...crowns, ...trunks]) { c.boundingSphere = null; c.computeBoundingSphere(); }   // the bounds follow the geometry
+  const tg = terrainFor(q); far.children.forEach((m, i) => m.geometry = tg.far[i]); near.children.forEach((m, i) => m.geometry = tg.near[i]); far.position.y = hi ? -0.25 : -0.45;
   window.__quality.mode = q; for (const f of window.__quality.listeners) f(q);
   const b = document.getElementById("qualityBtn"); b.textContent = hi ? "Grafika: pełna" : "Grafika: prosta"; b.classList.toggle("hi", hi);
 }
-window.__quality = { mode: QUALITY, listeners: [], set: q => { localStorage.setItem("simQuality", q); applyQuality(q); } };
+window.__quality = { mode: QUALITY, listeners: [], set: q => { localStorage.setItem("simQuality", q); applyQuality(q); window.__redraw && window.__redraw.kick(1500); } };
 document.getElementById("qualityBtn").onclick = () => window.__quality.set(QUALITY === "hi" ? "lo" : "hi");
 
 // ---------- buildings ----------
@@ -640,7 +663,19 @@ if (new URLSearchParams(location.search).get("scene") === "demo1") playDemo1();
 const info = document.getElementById("info"), clock = new THREE.Clock(), cam2 = new THREE.Vector2();
 const fpsEl = document.getElementById("fps"); let fpsN = 0, fpsT0 = performance.now();
 applyQuality(QUALITY);
+// draw only when something changes (author, 20 XI): a scene that sets window.__demoState ("busy" - the timeline
+// plays, the reticle sways, a free camera; "ambient" - only a blinking highlight or a pulsing line, drawn at ~20 fps;
+// "idle" - nothing) is not drawn while idle. Any input and any scripted change (window.__redraw.kick) draws for a while
+window.__redraw = { until: performance.now() + 2000, kick(ms = 400) { this.until = Math.max(this.until, performance.now() + ms); } };
+for (const ev of ["pointerdown", "pointermove", "pointerup", "wheel", "keydown", "keyup", "resize", "touchmove"]) addEventListener(ev, () => window.__redraw.kick(), { capture: true, passive: true });
+let lastDraw = 0;
 renderer.setAnimationLoop(() => {
+  if (window.__demoState) {
+    const now = performance.now(), st = now < window.__redraw.until ? "busy" : window.__demoState();
+    if (st === "idle") { clock.getDelta(); if (now - fpsT0 >= 500) { fpsEl.textContent = "spoczynek"; fpsN = 0; fpsT0 = now; } return; }
+    if (st === "ambient" && now - lastDraw < 50) return;
+    lastDraw = now;
+  }
   const rawDt = clock.getDelta(), dt = Math.min(rawDt, 0.1), sdt = Math.min(rawDt, 1.0);   // sdt: real time for the scripted scene
   timeU.value += dt;
   if (rain.visible) {                         // each drop falls ~6.5 m/s and comes back at the top; the box follows the camera

@@ -5,6 +5,7 @@ const CSS = `
 #tkBar { position: fixed; left: 50%; top: 52px; transform: translateX(-50%); z-index: 120; width: min(760px, calc(100vw - 120px));
   background: rgba(12,14,16,.9); color: #eee; border-radius: 8px; padding: 10px 14px; font: 15px/1.4 system-ui, sans-serif; box-shadow: 0 4px 18px rgba(0,0,0,.4); }
 #tkBar.side { left: 16px; transform: none; width: min(480px, 42vw); }
+#tkBar { cursor: grab; touch-action: none; }
 #tkBar .meta { font-size: 12px; color: #aaa; display: flex; justify-content: space-between; gap: 10px; }
 #tkBar .ask { font-size: 17px; font-weight: 600; margin: 4px 0 6px; }
 #tkBar .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -55,9 +56,24 @@ const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls)
 const f1 = v => (Math.round(v * 10) / 10).toFixed(1).replace(".", ",");
 export { f1 };
 
+// drag a fixed box with the left mouse button (or a finger) by any spot that is not a control (author, 20 XI: on a
+// small screen the question hid the Kestrel); once moved it keeps its place, clamped to the window
+export function draggable(box, onMove) {
+  let d = null;
+  box.addEventListener("pointerdown", e => {
+    if (e.button !== 0 || e.target.closest("button, input, select, textarea, label, a")) return;
+    const r = box.getBoundingClientRect(); d = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    box.setPointerCapture(e.pointerId); box.style.cursor = "grabbing"; e.preventDefault(); e.stopPropagation(); });
+  box.addEventListener("pointermove", e => { if (!d) return;
+    const r = box.getBoundingClientRect(), x = Math.max(0, Math.min(innerWidth - r.width, e.clientX - d.dx)), y = Math.max(0, Math.min(innerHeight - 40, e.clientY - d.dy));
+    Object.assign(box.style, { left: x + "px", top: y + "px", right: "auto", bottom: "auto", transform: "none" }); onMove && onMove(x, y); });
+  const end = () => { if (d) { d = null; box.style.cursor = ""; } };
+  box.addEventListener("pointerup", end); box.addEventListener("pointercancel", end);
+}
+
 export function makeUi() {
   if (!document.getElementById("tkCss")) { const st = el("style"); st.id = "tkCss"; st.textContent = CSS; document.head.append(st); }
-  const bar = el("div"); bar.id = "tkBar"; bar.style.display = "none"; document.body.append(bar);
+  const bar = el("div"); bar.id = "tkBar"; bar.style.display = "none"; document.body.append(bar); draggable(bar);
   let ring = null, menu = null, notes = null;
   const clearMenu = () => { if (menu) { menu.remove(); menu = null; } };
   const api = {

@@ -115,6 +115,7 @@ export async function startTask(mode, ctx, opts = {}) {
           checkMark(st, dx, dy) ? right(given) : wrong(given); };
         view.body.append(ok); extraCleanup = () => dot.remove();
       } else if (st.kind === "wind") {
+        if (demo.kestrelInsetSide) demo.kestrelInsetSide("right");   // the Kestrel is to be read: away from the question (author, 20 XI)
         // speed off the Kestrel and the side the wind blows from, in one answer (author, 19 XI)
         const inp = document.createElement("input"); inp.inputMode = "decimal"; const unit = document.createElement("span"); unit.textContent = "m/s";
         const box = document.createElement("div"); box.className = "choices"; box.style.flexBasis = "100%"; let from = null; const FROM = h => +h.match(/godziny (\d+)/)[1];

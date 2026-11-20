@@ -282,16 +282,29 @@ export async function play(ctx) {
     const dist = Math.max(hh / 2 / th, size.x / 2 / (th * W / H)) * 1.06 + size.z / 2;
     cam.position.copy(look).add(V(0, 0.08, 1).normalize().multiplyScalar(dist)); cam.lookAt(look);
     let cond = null, t0 = performance.now();
+    // place on the screen (CSS px from the left and from the bottom): dragged with the mouse by a handle over it, or
+    // put on the right when the trainee has to read it (author, 20 XI); kept inside the window
+    const pos = { L: 14, B: 112 };
+    const clampPos = () => { pos.L = Math.max(0, Math.min(innerWidth - W, pos.L)); pos.B = Math.max(0, Math.min(innerHeight - H, pos.B)); };
+    const handle = document.createElement("div"); handle.title = "Kestrel – przeciągnij myszą";
+    handle.style.cssText = `position:fixed;width:${Math.round(W * 0.6)}px;height:${H}px;z-index:110;cursor:grab;touch-action:none;display:none`; document.body.append(handle);
+    const placeHandle = () => { clampPos(); Object.assign(handle.style, { left: pos.L + W * 0.2 + "px", bottom: pos.B + "px" }); };   // over the device only, the scene beside it stays clickable
+    let drag = null;
+    handle.addEventListener("pointerdown", e => { if (e.button !== 0) return; drag = { x: e.clientX, y: e.clientY, L: pos.L, B: pos.B }; handle.setPointerCapture(e.pointerId); handle.style.cursor = "grabbing"; e.preventDefault(); e.stopPropagation(); });
+    handle.addEventListener("pointermove", e => { if (!drag) return; pos.L = drag.L + e.clientX - drag.x; pos.B = drag.B - (e.clientY - drag.y); placeHandle(); });
+    const endDrag = () => { drag = null; handle.style.cursor = "grab"; }; handle.addEventListener("pointerup", endDrag); handle.addEventListener("pointercancel", endDrag);
+    addEventListener("resize", placeHandle);
     // four lines in the part of the texture the screen shows (the top ~70 %)
     const draw = c_ => { x.fillStyle = "#b9c3a8"; x.fillRect(0, 0, 360, 230); x.fillStyle = "#1b241b"; x.font = "bold 31px monospace";
       const f1_ = v => v.toFixed(1).replace(".", ",");
       [`TEMP ${f1_(c_.temp ?? 15).padStart(5)} C`, `BARO ${String(c_.pressure ?? 1010).padStart(5)}`, `WIND ${f1_(c_.wind).padStart(5)}`, `DIR  ${c_.windFrom}:00`]
         .forEach((l, i) => x.fillText(l, 14, 31 + i * 34)); tex.needsUpdate = true; };
     return {
-      set(c_) { cond = c_; if (c_) draw(c_); },
+      set(c_) { cond = c_; if (c_) draw(c_); handle.style.display = c_ ? "block" : "none"; if (!c_) { pos.L = 14; pos.B = 112; } placeHandle(); },
+      side(s_) { pos.L = s_ === "right" ? innerWidth - W - 24 : 14; pos.B = 112; placeHandle(); },
       render(r) { if (!cond) return;
         const now = performance.now(); if (fan) fan.rotation.x += (now - t0) / 1000 * cond.wind * 5; t0 = now;
-        const L = 14, B = 112, cc = r.getClearColor(new THREE.Color()), ca = r.getClearAlpha(), ac = r.autoClear;
+        const L = pos.L, B = pos.B, cc = r.getClearColor(new THREE.Color()), ca = r.getClearAlpha(), ac = r.autoClear;
         r.setScissorTest(true); r.setScissor(L, B, W, H); r.setViewport(L, B, W, H); r.clearDepth();   // no background: the device stands over the frame
         r.autoClear = false; r.render(sc, cam); r.autoClear = ac;
         r.setScissorTest(false); r.setViewport(0, 0, innerWidth, innerHeight); r.setClearColor(cc, ca); } };
@@ -968,6 +981,7 @@ export async function play(ctx) {
     for (let i = 0; i < si.count; i++) for (let k = 0; k < 4; k++) si.setComponent(i, k, map[si.getComponent(i, k)]);
     dst.geometry = geo; dst.material = src.material; bodyNow[who] = q;
     COL[who] = makeSoldierSolver(THREE, COL, sol, who === "man" ? handsMan : handsInst);
+    if (window.__redraw) window.__redraw.kick(600);                   // loaded later than the switch: show it
   }
   bodyNow.man = bodyNow.inst = window.__quality ? window.__quality.mode : "hi";
   if (window.__quality) window.__quality.listeners.push(q => { setBody("man", man, q); setBody("inst", inst, q); });
@@ -1416,6 +1430,10 @@ export async function play(ctx) {
   veil.remove();
 
   (window.__frameHooks = window.__frameHooks || []).push(hook);
+  // draw only when something changes (index.html): what this scene needs drawn every frame, and a kick after every
+  // scripted change - the timeline moved, a step held its frame, the conditions, a highlight (author, 20 XI)
+  window.__demoState = () => tl.playing || sway || freeCam || fpp || (scopeDrag && scopeDrag.down) ? "busy" : hl || dirLine.visible ? "ambient" : "idle";
+  if (window.__redraw) window.__redraw.kick(1500);                     // the first frames of the loaded scene
   addEventListener("pointerdown", () => snd.unlock(), { once: true });
   startGate(TITLE, () => { snd.unlock(); tl.seek(0); tl.play(); }, k => runTask(k));
   // training / exam (panel "Zadania"): runner.js drives the timeline; one at a time
@@ -1427,7 +1445,11 @@ export async function play(ctx) {
       await startTask(mode, { tl, panel, demo: window.__demo, tab, canvas: ctx.renderer.domElement, chapterTitles: SCENES }, opts); }
     catch (e) { console.error("task", e); } finally { taskOn = false; } }   // sound needs a click first: the scene starts on it
   window.__demo = { COL, runTask: (...a) => runTask(...a), tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt,
-    setConditions, sightBlocked, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; }, setKestrelInset: c => kesInset.set(c), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
+    setConditions, sightBlocked, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; }, setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
+  { const kick = () => window.__redraw && window.__redraw.kick(600);
+    for (const k of ["seek", "holdAt", "play", "pause", "playRange", "cancelRange"]) { const f = tl[k].bind(tl); tl[k] = (...a) => { kick(); return f(...a); }; }
+    for (const [k, v] of Object.entries(Object.getOwnPropertyDescriptors(window.__demo))) if (typeof v.value === "function") {
+      const f = v.value; window.__demo[k] = (...a) => { const r = f(...a); kick(); if (r && r.then) r.then(kick, kick); return r; }; } }
 }
 
 // ---------- rear bag ----------
