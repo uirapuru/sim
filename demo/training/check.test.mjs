@@ -59,7 +59,7 @@ test("scoreExam: 80% passes, missing answers count as wrong", () => {
 
 test("steps play the narration keys in order, each once; only the trainee's own search is skipped", () => {
   const keys = JSON.parse(readFileSync(new URL("../audio/scene1/manifest.json", import.meta.url))).map(m => m.key);
-  const SKIPPED = ["s08.target", "s08.scan", "s08.strips"], OWN = ["s11.dir"];   // OWN: beats without narration
+  const SKIPPED = ["s08.target", "s08.scan", "s08.strips", "s15.breath", "s15.trigger", "s15.flight", "s15.hit", "s15.cycle", "s16.repeat", "s16.weld"], OWN = ["s11.dir"];   // OWN: beats without narration
   assert.deepEqual(STEPS.flatMap(s => s.play).filter(k => !OWN.includes(k)), keys.filter(k => !SKIPPED.includes(k)));
 });
 

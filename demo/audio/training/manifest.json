@@ -195,14 +195,7 @@
   {
    "file": "shot.0.mp3",
    "speaker": "narrator",
-   "duration": 2.96
-  }
- ],
- "repeat": [
-  {
-   "file": "repeat.0.mp3",
-   "speaker": "narrator",
-   "duration": 1.6
+   "duration": 3.52
   }
  ],
  "safe": [

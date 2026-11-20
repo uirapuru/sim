@@ -106,13 +106,12 @@ export const STEPS = [
   { id: "safety", chapter: 14, kind: "action", target: "safety_selector", hold: { key: "s14.safety", u: 0.05 }, action: "Przestaw bezpiecznik z Z na P",
     ask: "Komenda: „Ognia!”.", play: ["s14.cmd", "s14.safety"],
     hint: "Skrzydełko bezpiecznika jest nad chwytem. Z to zabezpieczony, P to ogień pojedynczy." },
-  // fire: the reticle sways with the breath and slows in the pause; holding the left button 2 s fires (author, 18 XI)
-  { id: "shot", chapter: 15, kind: "fire", shots: [0], hold: { key: "s15.trigger", u: 0.6 },
-    ask: "Siatka na środku gongu. Oddaj strzał.", play: ["s15.breath", "s15.trigger", "s15.flight", "s15.hit", "s15.cycle"],
-    hint: "Po wydechu siatka na chwilę staje. Wtedy naciskasz spust opuszkiem, płynnie, prosto do tyłu." },
-  { id: "repeat", chapter: 16, kind: "fire", shots: [1, 2], hold: { key: "s15.trigger", u: 0.6 },
-    ask: "Zostały dwa naboje.", play: ["s16.repeat", "s16.weld", "s16.group", "s16.empty"],
-    hint: "Ten sam cykl: oddech, pauza, spust, obserwacja. Policzek zostaje na kolbie." },
+  // fire (author, 20 XI): three live shots in one step - the breathing chart, the cross held on the target with the
+  // mouse, the shot when the button is let go in the respiratory pause; after a miss the settings may be changed.
+  // The timeline's own shots (s15.*, s16.repeat, s16.weld) are not played: the trainee has just fired them
+  { id: "shot", chapter: 15, kind: "fire", shots: [0, 1, 2], hold: { key: "s15.trigger", u: 0.6 },
+    ask: "Oddaj trzy strzały. Strzelaj w pauzie po wydechu.", play: ["s16.group", "s16.empty"],
+    hint: "Patrz na wykres oddechu. Po wydechu siatka na chwilę się uspokaja: wtedy puść przycisk, płynnie, nie szarpiąc myszą. Po pudle sprawdź nastawy: pocisk wyżej – zmniejsz wysokość, w lewo – poprawka w prawo." },
   { id: "safe", chapter: 17, kind: "action", target: "safety_selector", hold: { key: "s17.safe", u: 0.8 }, action: "Przestaw bezpiecznik z P na Z",
     ask: "Komenda: „Przerwij ogień!”.", play: ["s17.cmd", "s17.safe"],
     hint: "Na tę komendę od razu zabezpieczasz broń." },

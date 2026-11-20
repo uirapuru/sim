@@ -55,7 +55,7 @@ export async function startTask(mode, ctx, opts = {}) {
   if (exam) { panel.setLabels(false); panel.lockLabels(true); }
 
   let stopped = false, cancelAsk = null, timedOut = false;
-  const answers = new Map(), log = new Map(), trainLog = new Map(); let shots = 0;
+  const answers = new Map(), log = new Map(), trainLog = new Map(); let shots = 0, fireHits = [];
   // the exam clock runs all the time, the shooter's animations included (about 11 min of the 45)
   let deadline = performance.now() + (window.__examMs ?? EXAM_MS), animT0 = null;
   const clock = exam ? ui.clock() : null;
@@ -149,25 +149,42 @@ export async function startTask(mode, ctx, opts = {}) {
           if (!on) { onSince = null; return; } onSince ??= performance.now();
           if (performance.now() - onSince > 600) { clearInterval(poll); demo.setScopeDrag(false); right("cel na krzyżu"); } }, 100);
       } else if (st.kind === "fire") {
-        // hold the left button 2 s at the right moment: the bar fills and the shot goes; letting go earlier resets it.
-        // The reticle's offset at that moment is the shot's aim error (demo.setShotAim)
-        const HOLD = 2000; let k = 0, t0 = null, raf = 0;
+        // live shooting (author, 20 XI): the breathing chart under the scope; while the left button is held the cross
+        // follows the mouse (keep it on the target, the breath moves it); letting go fires. The bullet is seen in the
+        // scope, then the gong from up close. After a hit the next shot at once; after a miss: change the settings or
+        // keep them. After the last shot the Kestrel goes away until the end
         const tip = document.createElement("div"); tip.className = "dragTip";
-        tip.textContent = "Naciśnij lewy przycisk myszy i przytrzymaj 2 sekundy w odpowiednim do strzału momencie. Puszczony wcześniej – strzał nie pada i licznik startuje od zera.";
-        const bar = document.createElement("div"); bar.className = "fireBar"; const fill = document.createElement("div"); bar.append(fill);
-        const count = document.createElement("div"); count.className = "fireCount";
-        const showCount = () => { count.textContent = st.shots.length > 1 ? `Strzał ${k + 1} z ${st.shots.length}` : ""; }; showCount();
-        view.body.append(tip, bar, count); demo.setAimSway(true);
-        const tick_ = () => { if (t0 == null || done) return; const f = Math.min(1, (performance.now() - t0) / HOLD); fill.style.width = (f * 100).toFixed(1) + "%";
-          if (f >= 1) { t0 = null; fill.style.width = "0%"; const a = demo.aimNow(); demo.setShotAim(st.shots[k], a); fired.push(a); k++;
-            if (k >= st.shots.length) { demo.setAimSway(false); const hit = st.shots.map(n => demo.shotResult(n).hit);
-              finish({ ok: hit.every(Boolean), given: fired.map(([x, y]) => `${f1(Math.hypot(x, y))} mrad od środka`).join(", "), hinted, fireHits: hit }); return; }
-            showCount(); view.feedback("Strzał oddany. Następny.", "info"); return; }
-          raf = requestAnimationFrame(tick_); };
-        const fired = [];
-        onDown = e => { if (e.button !== 0 || e.target !== canvas) return; e.preventDefault(); t0 = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(tick_); };
-        onUp = () => { if (t0 != null) { t0 = null; fill.style.width = "0%"; } };
-        addEventListener("pointerup", onUp, true);
+        tip.textContent = "Naciśnij i trzymaj lewy przycisk myszy: krzyż idzie za myszą, trzymaj go na celu. Puść przycisk w pauzie po wydechu, wtedy pada strzał.";
+        const count = document.createElement("div"); count.className = "fireCount"; const extra = document.createElement("div"); extra.className = "row"; extra.style.flexBasis = "100%";
+        view.body.append(tip, count, extra);
+        const n = st.shots.length, res = [], dials = []; let k = 0, held = null, busy = false;
+        const showCount = () => { count.textContent = `Strzał ${k + 1} z ${n}`; };
+        const arm = () => { showCount(); demo.setAimSway(true); demo.breathChart(true); busy = false; };
+        const choose = (text, buttons) => new Promise(r => { extra.innerHTML = ""; const q = document.createElement("div"); q.className = "dragTip"; q.textContent = text; extra.append(q);
+          for (const [label, v, main] of buttons) { const b = document.createElement("button"); b.textContent = label; if (main) b.className = "main"; b.onclick = () => { extra.innerHTML = ""; r(v); }; extra.append(b); } });
+        const newDial = () => new Promise(r => { extra.innerHTML = ""; ui.notes(tab); const d0 = demo.getDial();
+          const mk = (label, unit, v) => { const w = document.createElement("label"); w.innerHTML = `${label} `; const i = document.createElement("input"); i.inputMode = "decimal"; i.value = f1(v); w.append(i, ` ${unit}`); return [w, i]; };
+          const [we, ie] = mk("Wysokość ↑", "mrad", d0.elev), [ww, iw] = mk("Poprawka boczna", "mrad", Math.abs(d0.wind));
+          let side = d0.wind >= 0 ? "L" : "P"; const sb = document.createElement("button"); const ss = () => sb.textContent = side === "L" ? "L (w lewo)" : "P (w prawo)"; ss(); sb.onclick = () => { side = side === "L" ? "P" : "L"; ss(); };
+          const ok = document.createElement("button"); ok.className = "main"; ok.textContent = "Ustaw";
+          ok.onclick = () => { const e = parseNumber(ie.value), w = parseNumber(iw.value); if (e == null || w == null) { view.feedback("Wpisz obie nastawy.", "info"); return; }
+            const d = { elev: e, wind: side === "L" ? Math.abs(w) : -Math.abs(w) }; demo.setDial(d); dials.push(d); ui.hideNotes(); extra.innerHTML = ""; r(d); };
+          extra.append(we, ww, sb, ok); });
+        const where = r => { const v = r.y > 0.5 ? "wyżej" : r.y < -0.5 ? "niżej" : "", h = r.x > 0.25 ? "w prawo" : r.x < -0.25 ? "w lewo" : ""; return [v, h].filter(Boolean).join(" i ") || "tuż obok"; };
+        onDown = e => { if (e.button !== 0 || e.target !== canvas || busy || done) return; e.preventDefault(); held = [e.clientX, e.clientY]; demo.setAimHold(true); };
+        onMove = e => { if (!held) return; demo.aimNudge(e.clientX - held[0], e.clientY - held[1]); held = [e.clientX, e.clientY]; };
+        onUp = async e => { if (!held) return; held = null; busy = true; demo.breathChart(false);
+          const r = await demo.fireLive(st.shots[k]); if (done) return; res.push(r); k++;
+          if (k >= n) { demo.setAimSway(false); demo.setKestrelInset(null);
+            const hits = res.filter(x => x.hit).length;
+            finish({ ok: hits >= 2, given: res.map((x, i) => `${i + 1}: ${x.hit ? "trafienie" : "pudło"}`).join(", "), hinted, fireHits: res.map(x => x.hit), dials }); return; }
+          if (r.hit) { view.feedback("Trafienie. Następny strzał.", "ok"); arm(); return; }
+          view.feedback(`Pudło: pocisk poszedł ${where(r)} od środka celu.`, "bad");
+          const v = await choose("Zmieniasz nastawy na lunecie?", [["Zmień nastawy", "change", true], ["Zostaw nastawy", "keep", false]]); if (done) return;
+          if (v === "change") await newDial(); if (done) return;
+          view.feedback("Następny strzał.", "info"); arm(); };
+        addEventListener("pointermove", onMove, true); addEventListener("pointerup", onUp, true);
+        demo.setAimSway(true); demo.breathChart(true); showCount();
       } else if (st.kind === "dial") {
         ui.notes(tab);
         const mk = (label, unit) => { const w = document.createElement("label"); w.innerHTML = `${label} `; const i = document.createElement("input"); i.inputMode = "decimal"; w.append(i, ` ${unit}`); return [w, i]; };
@@ -179,7 +196,7 @@ export async function startTask(mode, ctx, opts = {}) {
         view.body.append(we, ww, sb, ok);
       }
       if (onDown) addEventListener("pointerdown", onDown, true);
-      function cleanup() { voiceStop(); if (onMove) removeEventListener("pointermove", onMove, true); if (extraCleanup) extraCleanup(); if (st.kind === "fire") demo.setAimSway(false); if (onUp) removeEventListener("pointerup", onUp, true); if (onDown) removeEventListener("pointerdown", onDown, true); if (st.scopeDrag || st.kind === "find") demo.setScopeDrag(false); ui.clearMenu(); ui.hideCenter(); ui.hideRing(); demo.highlight(null); ui.hideNotes(); }
+      function cleanup() { voiceStop(); if (onMove) removeEventListener("pointermove", onMove, true); if (extraCleanup) extraCleanup(); if (st.kind === "fire") { demo.setAimSway(false); demo.breathChart(false); ui.hideNotes(); } if (onUp) removeEventListener("pointerup", onUp, true); if (onDown) removeEventListener("pointerdown", onDown, true); if (st.scopeDrag || st.kind === "find") demo.setScopeDrag(false); ui.clearMenu(); ui.hideCenter(); ui.hideRing(); demo.highlight(null); ui.hideNotes(); }
     });
   }
   function hint(st) {
@@ -197,10 +214,8 @@ export async function startTask(mode, ctx, opts = {}) {
   };
 
   // ---- the run ----
-  const dialIdx = steps.findIndex(s => s.kind === "dial"); let retry = false;   // after a miss: settings, then straight to the shot
   for (let i = 0; i < steps.length && !stopped && !timedOut; i++) {
     const st = steps[i], hold = st.hold || { key: st.play[0], u: 0 };
-    if (retry && st.kind !== "dial" && st.id !== "shot") continue;
     tl.holdAt(hold.key, hold.u); demo.setQuiz(true);
     const a = await ask(st, i, steps.length);
     demo.setQuiz(false);
@@ -209,18 +224,12 @@ export async function startTask(mode, ctx, opts = {}) {
     if (!a) break;
     if (!answers.has(st.id)) { answers.set(st.id, a.ok); log.set(st.id, a.given); trainLog.set(st.id, a); }
     if (a.dial) demo.setDial(a.dial);
+    if (a.fireHits) { fireHits = a.fireHits; const f = a.fireHits.indexOf(true); shots = f < 0 ? 0 : f + 1; }   // shots to the first hit
     // the question has just said the range command in the instructor's voice: the beat does not say it again
     const saidCmd = !(exam && st.kind === "action") && /^Komenda:/.test(typeof st.ask === "string" ? st.ask : "");   // the exam hides action questions
     tl.skipVoice = new Set(saidCmd ? [st.play[0]] : []);
     animT0 = performance.now(); await tl.playRange(st.play[0], st.play[st.play.length - 1]); animT0 = null; tl.skipVoice = new Set();
     if (stopped || timedOut) break;
-    if (st.id === "shot") { shots++;
-      if (!demo.shotResult(0).hit && dialIdx >= 0) {
-        const view = ui.show({ meta: `Strzał ${shots}`, ask: "Pudło. Sprawdź nastawy i strzel jeszcze raz.", onQuit: quit }); say("_miss");
-        view.feedback(exam ? "Popraw nastawy." : `Pocisk upadł ${demo.shotResult(0).y > 0 ? "za" : "przed"} celem lub obok. ${firstSentence(steps[dialIdx].hint)}`, "bad");
-        await new Promise(r => setTimeout(r, 2200)); ui.hideBar();
-        i = dialIdx - 1; retry = true; continue; }
-      retry = false; }
   }
   clearInterval(tick);
 
@@ -239,11 +248,10 @@ export async function startTask(mode, ctx, opts = {}) {
     } else {
       // summary (author, 18 XI): right first time and without a hint = green, otherwise red; the settings step counts
       // as right when the first shot hit. Hits: the procedure's three shots with the final settings; 0/3 fails
-      const nShots = steps.some(s => s.id === "repeat") ? 3 : steps.some(s => s.id === "shot") ? 1 : 0;
-      const hits = Array.from({ length: nShots }, (_, n) => demo.shotResult(n).hit).filter(Boolean).length;
+      const nShots = fireHits.length, hits = fireHits.filter(Boolean).length;
       const rows = steps.filter(s => trainLog.has(s.id)).map((s, k) => { const a = trainLog.get(s.id);
-        const good = s.kind === "dial" ? shots === 1 : s.kind === "fire" ? (a.fireHits || []).every(Boolean) : !a.misses && !a.hinted;
-        const why = s.kind === "dial" ? (good ? "" : `trafienie dopiero za ${shots}. strzałem`) : s.kind === "fire" ? `${(a.fireHits || []).filter(Boolean).length}/${(a.fireHits || []).length} w gong, siatka ${a.given}` : [a.misses ? `${a.misses} ${a.misses === 1 ? "błędna próba" : "błędne próby"}${a.firstWrong ? ` (najpierw: ${a.firstWrong})` : ""}` : "", a.hinted ? "z podpowiedzią" : ""].filter(Boolean).join(", ");
+        const good = s.kind === "dial" ? fireHits[0] === true : s.kind === "fire" ? (a.fireHits || []).filter(Boolean).length >= 2 : !a.misses && !a.hinted;
+        const why = s.kind === "dial" ? (good ? "" : shots ? `trafienie dopiero za ${shots}. strzałem` : "żaden strzał nie trafił") : s.kind === "fire" ? `${(a.fireHits || []).filter(Boolean).length}/${(a.fireHits || []).length} w gong (${a.given})` : [a.misses ? `${a.misses} ${a.misses === 1 ? "błędna próba" : "błędne próby"}${a.firstWrong ? ` (najpierw: ${a.firstWrong})` : ""}` : "", a.hinted ? "z podpowiedzią" : ""].filter(Boolean).join(", ");
         return { good, html: `<li class="${good ? "ok" : "bad"}">${good ? "✓" : "✗"} ${s.kind === "action" ? (s.ask || "") : resolve(s.ask, c)}${why ? ` <span class="why">– ${why}</span>` : ""}</li>` }; });
       const nGood = rows.filter(r => r.good).length, nBad = rows.length - nGood, passed = !nShots || hits > 0;
       await ui.modal(passed ? "Trening zaliczony" : "Trening niezaliczony",

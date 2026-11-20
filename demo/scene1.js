@@ -267,6 +267,7 @@ export async function play(ctx) {
   // the Kestrel in the bottom left corner of the screen during the training (author, 18 XI: the 3D model, not a
   // drawing): a copy of the bought model in its own small scene, its display showing the attempt's weather and wind,
   // the vane turning with the wind; drawn over the frame in a scissored viewport (__renderOverride), with no background of its own
+  let camKindNow = null;
   const kesInset = (() => {
     const sc = new THREE.Scene(), model = kesG.scene.clone(true); model.rotation.set(0, -Math.PI / 2, 0); sc.add(model);
     sc.add(new THREE.AmbientLight(0xffffff, 1.4)); const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(1.5, 2, 3); sc.add(key);
@@ -302,7 +303,7 @@ export async function play(ctx) {
     return {
       set(c_) { cond = c_; if (c_) draw(c_); handle.style.display = c_ ? "block" : "none"; if (!c_) { pos.L = 14; pos.B = 112; } placeHandle(); },
       side(s_) { pos.L = s_ === "right" ? innerWidth - W - 24 : 14; pos.B = 112; placeHandle(); },
-      render(r) { if (!cond) return;
+      render(r) { if (!cond || camKindNow === "gong" || camKindNow === "gongClose") return;   // no Kestrel in the views from the gong (author, 20 XI)
         const now = performance.now(); if (fan) fan.rotation.x += (now - t0) / 1000 * cond.wind * 5; t0 = now;
         const L = pos.L, B = pos.B, cc = r.getClearColor(new THREE.Color()), ca = r.getClearAlpha(), ac = r.autoClear;
         r.setScissorTest(true); r.setScissor(L, B, W, H); r.setViewport(L, B, W, H); r.clearDepth();   // no background: the device stands over the frame
@@ -746,7 +747,13 @@ export async function play(ctx) {
   const SHOTS = [{ n: 0, t0: SHOT_BEATS[0].start + 0.25, slow: SLOW }, { n: 1, t0: SHOT_BEATS[1].start + 3.0 }, { n: 2, t0: SHOT_BEATS[1].start + 10.5 }];
   let TOF = BAL.tof, SOUND_BACK = RANGE / SOUND;
   // bullet clock of a shot at timeline time T (slow motion for the first shot's gong insert)
-  function bt(sh, T) { const t = T - sh.t0, w = sh.slow; if (!w || t < w.from) return t; const len = (w.until - w.from) / w.factor;
+  // live shots of the training (author, 20 XI): fired by the trainee in real time, not on the timeline. LIVE[n] is
+  // the moment of the shot (performance.now); the bullet flies at half speed in the scope (so the trace is seen), then
+  // at full speed (the gong swings, the sand flies); SHOT_DIAL[n] the settings it was fired with
+  const LIVE = [null, null, null], SHOT_DIAL = [null, null, null], LIVE_SLOW = 0.5;
+  function liveT(n) { const e = (performance.now() - LIVE[n]) / 1000, k = (TOF + 0.15) / LIVE_SLOW; return e < k ? e * LIVE_SLOW : TOF + 0.15 + (e - k); }
+  function bt(sh, T) { if (LIVE[sh.n] != null) return liveT(sh.n);
+    const t = T - sh.t0, w = sh.slow; if (!w || t < w.from) return t; const len = (w.until - w.from) / w.factor;
     return t < w.from + len ? w.from + (t - w.from) * w.factor : w.until + (t - w.from - len); }
 
   // ---------- ballistics: point of the trajectory at range d for shot n (world), relative to the LOS ----------
@@ -754,7 +761,8 @@ export async function play(ctx) {
   const losDir = GC.clone().sub(RL(EYE)).normalize(), losRight = losDir.clone().cross(up).normalize(), losUp = losRight.clone().cross(losDir).normalize();
   function pathAt(d, n) {
     let i = rows.findIndex(r => r[0] >= d); if (i < 0) i = rows.length - 1; if (i < 1) i = 1;   /* past the table: extrapolate from its last rows */ const a = rows[i - 1], b = rows[i], f = (d - a[0]) / Math.max(1e-6, b[0] - a[0]);
-    const h = a[2] + (b[2] - a[2]) * f + ELEV * d / 1000 + (DISP[n][1] + AIM[n][1]) * d / 1000, w = a[3] + (b[3] - a[3]) * f - WIND * d / 1000 + (DISP[n][0] + AIM[n][0]) * d / 1000;
+    const dl = SHOT_DIAL[n] || { elev: ELEV, wind: WIND };          // a live shot keeps the settings it was fired with
+    const h = a[2] + (b[2] - a[2]) * f + dl.elev * d / 1000 + (DISP[n][1] + AIM[n][1]) * d / 1000, w = a[3] + (b[3] - a[3]) * f - dl.wind * d / 1000 + (DISP[n][0] + AIM[n][0]) * d / 1000;
     return RL(EYE).addScaledVector(losDir, d).addScaledVector(losUp, h).addScaledVector(losRight, w);
   }
   function rangeAtTime(t) { let i = rows.findIndex(r => r[1] >= t); if (i < 1) i = 1; const a = rows[i - 1], b = rows[i]; return a[0] + (b[0] - a[0]) * (t - a[1]) / Math.max(1e-6, b[1] - a[1]); }
@@ -788,6 +796,7 @@ export async function play(ctx) {
     if (!TAB) TAB = await fetch("demo/ballistics_table.json" + ver).then(r => r.json());
     const { tableDope, rowAt, atmK } = await import("./training/conditions.js" + ver);
     COND = { ...c }; RANGE = c.range; AIM.forEach(a => { a[0] = 0; a[1] = 0; });   // a new attempt: no aim errors yet
+    LIVE.fill(null); SHOT_DIAL.fill(null); liveCam = null; userAim = [0, 0];
     turnStand(c.bearing ?? 0);                                          // also moves the gong to the range and bearing
     losDir.copy(GC).sub(RL(EYE)).normalize(); losRight.copy(losDir).cross(up).normalize(); losUp.copy(losRight).cross(losDir).normalize();
     if (view) { rows = BAL.rows; ELEV = 6.5; WIND = 1.6; TOF = BAL.tof; PLX_SET = 600; }
@@ -858,21 +867,62 @@ export async function play(ctx) {
     puffGeo.attributes.position.needsUpdate = true; puff.material.opacity = t < 1.0 ? 0.95 : 0.95 * (1 - (t - 1.0) / 0.6); }
   // aim error of each shot (mrad, right / up): where the swaying reticle was when the trainee fired (training)
   const AIM = [[0, 0], [0, 0], [0, 0]];
-  // the reticle while the trainee holds the shot (author, 18 XI): about 3.5 s of breathing, a faster and wider sway, then
-  // a ~3 s pause in which it slows down and nearly stops; over and over. Real time, the timeline stands still meanwhile
-  let sway = null;
-  const setAimSway = on => { sway = on ? { last: performance.now(), t: 0, ph: [0, 0, 0, 0] } : null; };
+  // the trainee's breathing (author, 20 XI): a cycle of 6.5 s - in and out as half a sine (0 -> full breath -> 0) in
+  // 3.5 s, then a 3 s respiratory pause at zero. The reticle sways with it: wide while breathing, calming down in the
+  // pause - that is when the shot should go. Real time, the timeline stands still meanwhile
+  const BREATH = { cycle: 6.5, breath: 3.5 };
+  const breathAt = t => { const c = ((t % BREATH.cycle) + BREATH.cycle) % BREATH.cycle; return c < BREATH.breath ? Math.sin(Math.PI * c / BREATH.breath) : 0; };
+  let sway = null, userAim = [0, 0], holding = false;
+  const setAimSway = on => { sway = on ? { last: performance.now(), t: 0, ph: [0, 0, 0, 0], frozen: null } : null; userAim = [0, 0]; holding = false; };
   function aimNow() {
     if (!sway) return [0, 0];
+    if (sway.frozen) return sway.frozen.slice();
     const now = performance.now(), dt = Math.min(0.1, (now - sway.last) / 1000); sway.last = now; sway.t += dt;
-    const c = sway.t % 6.5, breathing = c < 3.5, e = breathing ? Math.min(1, c / 0.6, (3.5 - c) / 0.6 + 0.12) : 0.12 + 0.08 * Math.max(0, 1 - (c - 3.5) / 0.8);
+    const c = sway.t % BREATH.cycle, b = breathAt(sway.t);
+    const e = 0.1 + 0.9 * b + (c >= BREATH.breath ? 0.15 * Math.max(0, 1 - (c - BREATH.breath) / 1.0) : 0);   // settles over the first second of the pause
     const sp = 0.35 + 0.65 * Math.min(1, e);                   // slower in the pause too, not just smaller
     [1 / 1.7, 1 / 0.9, 1 / 2.3, 1 / 1.1].forEach((f, i) => sway.ph[i] += 2 * Math.PI * f * dt * sp);
-    const A = 0.9 * e;
-    return [A * (0.6 * Math.sin(sway.ph[0]) + 0.25 * Math.sin(sway.ph[1])), A * (0.8 * Math.sin(sway.ph[2]) + 0.3 * Math.sin(sway.ph[3] + 1))];
+    const A = 0.9 * e, tr = holding ? 0.04 : 0;                // holding the trigger: a fine tremor
+    return [userAim[0] + A * (0.6 * Math.sin(sway.ph[0]) + 0.25 * Math.sin(sway.ph[1])) + tr * Math.sin(now / 37),
+            userAim[1] + A * (0.8 * Math.sin(sway.ph[2]) + 0.3 * Math.sin(sway.ph[3] + 1)) + tr * Math.sin(now / 29)];
+  }
+  // the mouse moves the cross while the button is held (screen pixels -> mrad at the scope's power)
+  let lastScopeMag = 9;
+  const aimNudge = (dx, dy) => { const k = scopeGeom(lastScopeMag).pxPerMrad; userAim[0] += dx / k; userAim[1] -= dy / k; };
+  // the breathing chart under the scope picture: the curve runs under a still red line (now); a little of the future
+  // is shown, so the pause can be seen coming
+  const chart = document.createElement("canvas"); chart.width = 360; chart.height = 92;
+  chart.style.cssText = "position:fixed;left:50%;bottom:150px;transform:translateX(-50%);z-index:105;display:none;pointer-events:none;border-radius:6px";
+  document.body.append(chart);
+  let chartOn = false;
+  function drawChart() {
+    const show = chartOn && sway && !sway.frozen && !liveCam; chart.style.display = show ? "block" : "none"; if (!show) return;
+    const g = chart.getContext("2d"), W_ = 360, H_ = 92, top = 24, bot = 80, span = 8, now = sway.t, mid = W_ * 0.62;
+    g.clearRect(0, 0, W_, H_); g.fillStyle = "rgba(0,0,0,.62)"; g.fillRect(0, 0, W_, H_);
+    g.fillStyle = "#f2c94c"; g.font = "600 14px system-ui"; g.fillText("Twój oddech", 10, 17);
+    g.fillStyle = "#cfd8c8"; g.font = "12px system-ui"; g.textAlign = "right"; g.fillText(breathAt(now) > 0.02 ? "wdech / wydech" : "pauza – strzelaj", W_ - 10, 17); g.textAlign = "left";
+    g.strokeStyle = "rgba(255,255,255,.25)"; g.beginPath(); g.moveTo(8, bot); g.lineTo(W_ - 8, bot); g.stroke();
+    g.strokeStyle = "#9fe39f"; g.lineWidth = 2.2; g.beginPath();
+    for (let x = 8; x <= W_ - 8; x += 2) { const t = now + (x - mid) / W_ * span, y = bot - breathAt(t) * (bot - top); x === 8 ? g.moveTo(x, y) : g.lineTo(x, y); }
+    g.stroke(); g.lineWidth = 1;
+    g.strokeStyle = "#ff3b30"; g.lineWidth = 2.5; g.beginPath(); g.moveTo(mid, top - 4); g.lineTo(mid, bot + 6); g.stroke(); g.lineWidth = 1;
+  }
+  // a live shot: the cross where it is now, the dial as set now; the bullet in the scope until it lands, then the gong
+  // from up close for a moment. Resolves { hit, x, y } (plate coords, m)
+  let liveCam = null;
+  function fireLive(n) {
+    const a = aimNow(); AIM[n][0] = a[0]; AIM[n][1] = a[1]; SHOT_DIAL[n] = { elev: ELEV, wind: WIND }; marksDrawn = -1;
+    if (sway) sway.frozen = a; holding = false; LIVE[n] = performance.now(); snd.shot();
+    const im = impact(n), hit = onPlate(im), land = (TOF + 0.15) / LIVE_SLOW * 1000;
+    if (hit) setTimeout(() => snd.ding(), land + SOUND_BACK * 1000);
+    return new Promise(res => {
+      setTimeout(() => { liveCam = { kind: "gongClose" }; }, land + 250);
+      setTimeout(() => { liveCam = null; res({ hit, x: im[0], y: im[1] }); }, land + 250 + 2200); });
   }
   let aimCur = [0, 0];
-  const impact = n => { const p = pathAt(RANGE, n), loc = pivot.worldToLocal(p.clone()); return [-loc.x, loc.y - (-0.82)]; };   // plate coords (x right from the shooter's view, y up)
+  // plate coords, x right from the shooter's view, y up (author, 20 XI: the sign of x was flipped, so a shot to the
+  // right left its mark on the left of the plate)
+  const impact = n => { const p = pathAt(RANGE, n), loc = pivot.worldToLocal(p.clone()); return [loc.x, loc.y - (-0.82)]; };
 
   // ---------- render one evaluated state ----------
   const panel = makePanel(tl, { title: TITLE, lesson: "Strzelanie z SpKW/Z", onTask: k => runTask(k), onToggleLabels: on => { labelsOn = on; if (!on) { tip.style.display = "none"; ctx.renderer.domElement.style.cursor = ""; } }, onCamMode: m => { freeCam = m === "free"; fpp = m === "fpp"; controls.enabled = freeCam; if (freeCam) { controls.target.copy(man.m.position).add(V(0, 0.6, 0)); } } });
@@ -1280,7 +1330,8 @@ export async function play(ctx) {
     // camera
     dirLine.visible = false;
     if (freeCam) { freeMove(); controls.update(); setScope(null); man.m.visible = rifle.visible = capF.visible = capR.visible = true; camera.fov = 50; camera.updateProjectionMatrix(); setFocus(controls.target); return; }
-    const c = S.cam || { kind: "follow", off: [2.5, 1.2, 1.5], look: [0, 0.8, 0] };
+    const c = liveCam || S.cam || { kind: "follow", off: [2.5, 1.2, 1.5], look: [0, 0.8, 0] };
+    camKindNow = c.kind; drawChart();
     if (fpp && c.kind !== "scope") { setScope(null); man.m.visible = rifle.visible = capF.visible = capR.visible = true; fppCamera(S); setFocus(null); return; }
     if (fpp) fppInit = false;                                      // back from the scope: the eyes pick up the new target at once
     setScope(c.kind === "scope" ? S.scope : null, T);
@@ -1385,7 +1436,7 @@ export async function play(ctx) {
       if (ms.innerHTML !== m) ms.innerHTML = m; }
   }
   function scopeCamera(sc, T, recoil) {
-    const g_ = scopeGeom(sc.mag);
+    const g_ = scopeGeom(sc.mag); lastScopeMag = sc.mag;
     camera.fov = g_.vfov; camera.updateProjectionMatrix();
     const eye = rifle.localToWorld(EYE.clone());
     const SLOW = 5;                                                   // sway runs 5x slower than first built (author, scene 14)
@@ -1432,7 +1483,7 @@ export async function play(ctx) {
   (window.__frameHooks = window.__frameHooks || []).push(hook);
   // draw only when something changes (index.html): what this scene needs drawn every frame, and a kick after every
   // scripted change - the timeline moved, a step held its frame, the conditions, a highlight (author, 20 XI)
-  window.__demoState = () => tl.playing || sway || freeCam || fpp || (scopeDrag && scopeDrag.down) ? "busy" : hl || dirLine.visible ? "ambient" : "idle";
+  window.__demoState = () => tl.playing || sway || liveCam || LIVE.some(t => t != null && performance.now() - t < 8000) || freeCam || fpp || (scopeDrag && scopeDrag.down) ? "busy" : hl || dirLine.visible ? "ambient" : "idle";
   if (window.__redraw) window.__redraw.kick(1500);                     // the first frames of the loaded scene
   addEventListener("pointerdown", () => snd.unlock(), { once: true });
   startGate(TITLE, () => { snd.unlock(); tl.seek(0); tl.play(); }, k => runTask(k));
@@ -1445,7 +1496,8 @@ export async function play(ctx) {
       await startTask(mode, { tl, panel, demo: window.__demo, tab, canvas: ctx.renderer.domElement, chapterTitles: SCENES }, opts); }
     catch (e) { console.error("task", e); } finally { taskOn = false; } }   // sound needs a click first: the scene starts on it
   window.__demo = { COL, runTask: (...a) => runTask(...a), tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt,
-    setConditions, sightBlocked, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; }, setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
+    setConditions, sightBlocked, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; },
+    aimNudge, setAimHold: on => { holding = !!on; }, breathChart: on => { chartOn = !!on; drawChart(); }, fireLive, getDial: () => ({ elev: ELEV, wind: WIND }), setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
   { const kick = () => window.__redraw && window.__redraw.kick(600);
     for (const k of ["seek", "holdAt", "play", "pause", "playRange", "cancelRange"]) { const f = tl[k].bind(tl); tl[k] = (...a) => { kick(); return f(...a); }; }
     for (const [k, v] of Object.entries(Object.getOwnPropertyDescriptors(window.__demo))) if (typeof v.value === "function") {
