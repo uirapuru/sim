@@ -123,10 +123,14 @@ export async function play(ctx) {
   function clearTargets() { for (const o of targetCopies) scene.remove(o.obj); targetCopies.length = 0; ACTIVE = -1; CARD_PREV = []; LIVE_ONLY = false; }
   function setTargets(list) { clearTargets(); list.forEach((tg, i) => { if (i > 0) { const o = gongCopy(false); placeAt(o, tg); targetCopies.push({ i, obj: o, fresh: true }); } }); LIVE_ONLY = true; }
   async function activateTarget(i, c) {
-    if (ACTIVE >= 0 && ACTIVE !== i) { const old = gongCopy(true); old.position.copy(gong.position); old.rotation.copy(gong.rotation); targetCopies.push({ i: ACTIVE, obj: old, fresh: false });
-      CARD_PREV.push({ range: RANGE, bearing: COND.bearing ?? 0, n: ACTIVE + 1 }); }
-    const k = targetCopies.findIndex(o => o.i === i && o.fresh); if (k >= 0) { scene.remove(targetCopies[k].obj); targetCopies.splice(k, 1); }
+    if (ACTIVE >= 0 && ACTIVE !== i) { const old = gongCopy(true); old.position.copy(gong.position); old.rotation.copy(gong.rotation); targetCopies.push({ i: ACTIVE, obj: old, fresh: false }); }
+    // the phases visit the targets more than once (find, measure, directions, shoot): the copy standing at target i
+    // goes, its picture of the marks goes back onto the working gong
+    let marks = null; const k = targetCopies.findIndex(o => o.i === i);
+    if (k >= 0) { const o = targetCopies[k]; if (!o.fresh) o.obj.traverse(m => { if (m.isMesh && Array.isArray(m.material) && m.material[0].map && m.material[0].map.image) marks = m.material[0].map.image; });
+      scene.remove(o.obj); targetCopies.splice(k, 1); }
     ACTIVE = i; await setConditions(c);
+    if (marks) { gongCanvas.getContext("2d").drawImage(marks, 0, 0); gongTex.needsUpdate = true; marksDrawn = 0; }
   }
 
   // ---------- the stand: worn sand and sparse short grass (the range around it is mown, author 16 XI) ----------
@@ -996,7 +1000,7 @@ export async function play(ctx) {
   // the range card's target point on the screen, when the card is shown
   function cardTargetPx(c) { const box = [...OV.el.children].find(d => d.style.display !== "none" && d.textContent.includes("KARTA OGNIA")); const svg = box && box.querySelector("svg"); if (!svg) return null;
     const cc = c || COND, rr = cc.range * 0.19, a = (cc.bearing ?? 0) * Math.PI / 180, r = svg.getBoundingClientRect();
-    return { x: r.left + (200 + rr * Math.sin(a)) * r.width / 400, y: r.top + (210 - rr * Math.cos(a)) * r.height / 232, box }; }
+    return { x: r.left + (200 + rr * Math.sin(a)) * r.width / 400, y: r.top + (210 - rr * Math.cos(a)) * r.height / 232, ox: r.left + 200 * r.width / 400, oy: r.top + 210 * r.height / 232, box }; }
   function updateLabel() {
     if (!labelsOn || !mouseIn) { tip.style.display = "none"; return; }
     mouse.set(mx / innerWidth * 2 - 1, -(my / innerHeight) * 2 + 1); ray.setFromCamera(mouse, camera);
@@ -1535,7 +1539,7 @@ export async function play(ctx) {
     catch (e) { console.error("task", e); } finally { taskOn = false; } }   // sound needs a click first: the scene starts on it
   window.__demo = { COL, runTask: (...a) => runTask(...a), tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt,
     setConditions, sightBlocked, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; },
-    setTargets, activateTarget, setRounds: n => { NR = n; }, aimNudge, setAimHold: on => { holding = !!on; }, breathChart: on => { chartOn = !!on; drawChart(); }, fireLive, getDial: () => ({ elev: ELEV, wind: WIND }), setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
+    setTargets, activateTarget, setCardTargets: list => { CARD_PREV = list || []; }, setRounds: n => { NR = n; }, aimNudge, setAimHold: on => { holding = !!on; }, breathChart: on => { chartOn = !!on; drawChart(); }, fireLive, getDial: () => ({ elev: ELEV, wind: WIND }), setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
   { const kick = () => window.__redraw && window.__redraw.kick(600);
     for (const k of ["seek", "holdAt", "play", "pause", "playRange", "cancelRange"]) { const f = tl[k].bind(tl); tl[k] = (...a) => { kick(); return f(...a); }; }
     for (const [k, v] of Object.entries(Object.getOwnPropertyDescriptors(window.__demo))) if (typeof v.value === "function") {

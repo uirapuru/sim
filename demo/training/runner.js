@@ -54,6 +54,14 @@ export async function startTask(mode, ctx, opts = {}) {
     for (let k = 0; !opts.targets && k < 80 && demo.sightBlocked && targets.some(t => demo.sightBlocked({ ...c0, ...t })); k++) targets = rollTargets();
     c = cFor(0); }
   const cAt = new Map();   // step id -> the conditions it was asked in (the targets differ)
+  // scenario 2: what the trainee found for each target (his range and clock hour) - the range card in the corner while
+  // shooting (author, 20 XI: top right, clear of the scope; the targets one under another)
+  const own = [{}, {}, {}];
+  const cornerHtml = () => { const P = (rng, h) => { const r = Math.min(1000, rng || 0) * 0.11, a = (h === 12 || h == null ? 0 : h === 11 ? -30 : h === 1 ? 30 : (h % 12) * 30) * Math.PI / 180; return [110 + r * Math.sin(a), 118 - r * Math.cos(a)]; };
+    const arcs = [200, 400, 600, 800, 1000].map(d => { const r = d * 0.11; return `<path d="M ${110 - r} 118 A ${r} ${r} 0 0 1 ${110 + r} 118" fill="none" stroke="#9aa3b2" stroke-width="${d % 1000 ? 0.7 : 1.2}"/>`; }).join("");
+    const dots = own.map((o, i) => { if (!o.range) return ""; const [x, y] = P(o.range, o.clock); return `<circle cx="${x}" cy="${y}" r="4.5" fill="#c0242a"/><text x="${x + 7}" y="${y + 4}" font-size="11" fill="#c0242a">${i + 1}</text>`; }).join("");
+    const rows = own.map((o, i) => `<tr><td><b>${i + 1}</b></td><td>${o.range ? o.range + " m" : "–"}</td><td>${o.clock ? "godz. " + o.clock : "–"}</td></tr>`).join("");
+    return `<div class="t">Karta ognia</div><svg width="220" height="124"><line x1="110" y1="118" x2="${110 - 110 * Math.sin(0.7)}" y2="${118 - 110 * Math.cos(0.7)}" stroke="#444"/><line x1="110" y1="118" x2="${110 + 110 * Math.sin(0.7)}" y2="${118 - 110 * Math.cos(0.7)}" stroke="#444"/>${arcs}<polygon points="110,113 106,121 114,121" fill="#1d2a40"/>${dots}</svg><table>${rows}</table>`; };
   let tick = null;
   try {
   await demo.setConditions(c); demo.setKestrelInset(c);
@@ -122,7 +130,11 @@ export async function startTask(mode, ctx, opts = {}) {
           else if (placed) put(placed[0], placed[1], false); else dot.style.display = "none"; };
         addEventListener("pointermove", onMove, true); addEventListener("pointerup", onUp, true);
         const ok = document.createElement("button"); ok.className = "main"; ok.textContent = "Zatwierdź"; ok.disabled = true;
-        ok.onclick = () => { if (!placed) return; const t = demo.cardTargetPx(c); if (!t) return; const dx = placed[0] - t.x, dy = placed[1] - t.y, given = `${Math.round(Math.hypot(dx, dy))} px od celu`;
+        ok.onclick = () => { if (!placed) return; const t = demo.cardTargetPx(c); if (!t) return;
+          if (st.angleOnly) {   // scenario 2: only the direction counts on the card (author, 20 XI)
+            const ang = (x, y) => Math.atan2(x - t.ox, t.oy - y) * 180 / Math.PI, d = Math.abs(ang(placed[0], placed[1]) - ang(t.x, t.y));
+            const given = `${Math.round(d)}° od kierunku celu`; return d <= 8 && placed[1] < t.oy ? right(given) : wrong(given); }
+          const dx = placed[0] - t.x, dy = placed[1] - t.y, given = `${Math.round(Math.hypot(dx, dy))} px od celu`;
           checkMark(st, dx, dy) ? right(given) : wrong(given); };
         view.body.append(ok); extraCleanup = () => dot.remove();
       } else if (st.kind === "wind") {
@@ -226,7 +238,7 @@ export async function startTask(mode, ctx, opts = {}) {
     if (st.kind === "action") return st.anywhere ? st.action : `${demo.nameOf(st.target)} → ${st.action}`;
     if (st.kind === "choice") return resolve(st.correct, c);
     if (st.kind === "number") { const a = resolve(st.answer, c); return `${st.unit === "m" ? Math.round(a) : f1(a)} ${st.unit}`; }
-    if (st.kind === "mark") return `cel na łuku ${c.range} m, na godzinie ${c.clock ?? 12}`;
+    if (st.kind === "mark") return st.angleOnly ? `kierunek: godzina ${c.clock ?? 12}` : `cel na łuku ${c.range} m, na godzinie ${c.clock ?? 12}`;
     if (st.kind === "wind") return `${f1(c.wind)} m/s, ${resolve(st.correct, c).toLowerCase()}`;
     if (st.kind === "fire" || st.kind === "find") return "";
     const d = tableDope(c, tab); return `ok. ${f1(d.elev)} ↑ · ${f1(Math.abs(d.wind))} ${d.wind >= 0 ? "L" : "P"}`;
@@ -245,6 +257,8 @@ export async function startTask(mode, ctx, opts = {}) {
     if (outOfAmmoAt != null && st.tgt != null && st.tgt > outOfAmmoAt) continue;
     if (targets && st.tgt != null && st.tgt !== curT) { curT = st.tgt; c = cFor(curT); await demo.activateTarget(curT, c); }
     cAt.set(st.id, c);
+    if (targets && st.baseId === "card") demo.setCardTargets(own.slice(0, st.tgt).map((o, i) => ({ range: o.range ?? targets[i].range, bearing: targets[i].bearing, n: i + 1 })));
+    if (targets && st.corner) ui.corner(cornerHtml()); else ui.hideCorner();
     tl.holdAt(hold.key, hold.u); demo.setQuiz(true);
     const a = await ask(st, i, steps.length);
     demo.setQuiz(false);
@@ -253,6 +267,7 @@ export async function startTask(mode, ctx, opts = {}) {
     if (!a) break;
     if (!answers.has(st.id)) { answers.set(st.id, a.ok); log.set(st.id, a.given); trainLog.set(st.id, a); }
     if (a.dial) demo.setDial(a.dial);
+    if (targets && st.tgt != null && a.ok) { if (st.baseId === "range") own[st.tgt].range = Math.round(parseNumber(a.given)); if (st.baseId === "direction") own[st.tgt].clock = +String(a.given).replace(/\D+/g, ""); }
     if (a.fireHits) { fireBy.set(a.tgt ?? 0, a.fireHits); fireHits = [...fireBy.values()].flat(); const f = (fireBy.get(0) || []).indexOf(true); shots = f < 0 ? 0 : f + 1; }   // shots to the first hit
     // the question has just said the range command in the instructor's voice: the beat does not say it again
     const saidCmd = !(exam && st.kind === "action") && /^Komenda:/.test(typeof st.ask === "string" ? st.ask : "");   // the exam hides action questions
@@ -292,7 +307,7 @@ export async function startTask(mode, ctx, opts = {}) {
   }
   } finally {
   // ---- back to watching (also after an error) ----
-  clearInterval(tick); voiceStop(); demo.setKestrelInset(null); ui.destroy(); tl.cancelRange(); tl.pause(); panel.setSubs(true); panel.setLocked(false); panel.lockLabels(false); demo.setQuiz(false); demo.highlight(null);
+  clearInterval(tick); voiceStop(); demo.setKestrelInset(null); demo.setCardTargets && demo.setCardTargets([]); ui.destroy(); tl.cancelRange(); tl.pause(); panel.setSubs(true); panel.setLocked(false); panel.lockLabels(false); demo.setQuiz(false); demo.highlight(null);
   try { await demo.setConditions(VIEW_CONDITIONS, true); } catch (e) { console.error(e); }
   tl.holdAt(STEPS[0].play[0], 0); tl.voice = true; tl.commands = false; tl.fast = false; tl.skipVoice = new Set();
   }

@@ -136,28 +136,42 @@ export const STEPS = [
 ];
 
 // scenario 2 (author, 20 XI): three targets from the nearest to the farthest, two shots at each; a target is hit
-// when both shots hit, then the trainee goes on to the next one either way. The procedure is the same: the steps of one target (finding it,
-// measuring, the range card, the settings, the shots) are repeated for each; the wind and the safety only once
+// when both shots hit, then the trainee goes on to the next one either way. In phases (author, 20 XI, later):
+// find all three, measure each (from its height only), judge the directions, put all three on the range card (only
+// the direction is graded there), then the shooting, target by target, with the range card in the corner
 export const SCENARIOS = [{ n: 1, title: "Jeden cel, trzy strzały" }, { n: 2, title: "Trzy cele, po dwa trafienia" }];
-const PER_TARGET = ["scan", "zoom", "height", "width", "wind", "range", "direction", "card", "parallax", "dial", "safety", "shot"];
-const ONCE = new Set(["wind", "safety"]);
 export function scenarioSteps(n) {
   if (n !== 2) return STEPS;
   const by = id => STEPS.find(s => s.id === id), first = STEPS.findIndex(s => s.id === "scan"), after = STEPS.findIndex(s => s.id === "safe");
+  const T = [0, 1, 2], nr = t => t + 1;
+  // tgt: the target's number (target is the clicked part); corner: the range card in the top right corner
+  const mk = (id, t, o = {}) => ({ ...by(id), id: t == null ? id : (t ? `${id}_${t + 1}` : id), baseId: id, ...(t == null ? {} : { tgt: t }), ...o });
   // six rounds for the three targets (author, 20 XI): the loading command says so
   const out = STEPS.slice(0, first).map(s => s.id !== "load" ? s : { ...s, baseId: "load", voice: "load_s2", ask: "Komenda: „Sześcioma – magazynki ładuj!”.", action: "Załaduj sześć nabojów do magazynka",
     hint: "Wciskasz naboje kolejno do magazynka, każdy do końca: sześć, po dwa na cel. Kliknij magazynek." });
-  for (let t = 0; t < 3; t++) for (const id of PER_TARGET) {
-    if (t > 0 && ONCE.has(id)) continue;
-    const s = { ...by(id), id: t ? `${id}_${t + 1}` : id, baseId: id, tgt: t };   // tgt: the target's number (target is the clicked part)
-    if (id === "scan") { s.voice = t === 0 ? "scan_s2" : `scan_${t + 1}`; s.ask = t === 0 ? "Przed tobą trzy gongi. Strzelasz od najbliższego do najdalszego. Znajdź w lunecie najbliższy i najedź na niego krzyżem."
-      : `Cel nr ${t + 1}: następny co do odległości. Znajdź go w lunecie i najedź na niego krzyżem.`;
-      s.hint = "Cele leżą na różnych odległościach i kierunkach. Porównaj ich wielkość w lunecie: bliższy gong jest większy."; }
+  const findHint = "Cele leżą na różnych odległościach i kierunkach. Porównaj ich wielkość w lunecie: bliższy gong jest większy.";
+  for (const t of T) out.push(mk("scan", t, { voice: t === 0 ? "scan_s2" : `scan_${nr(t)}`, hint: findHint, play: ["s08.cmd"],
+    ask: t === 0 ? "Przed tobą trzy gongi. Strzelasz od najbliższego do najdalszego. Znajdź w lunecie najbliższy i najedź na niego krzyżem."
+      : `Cel nr ${nr(t)}: następny co do odległości. Znajdź go w lunecie i najedź na niego krzyżem.` }));
+  out.push(mk("zoom", 0));
+  for (const t of T) {
+    out.push(mk("height", t, { voice: `height_s2_${nr(t)}`, ask: `Cel nr ${nr(t)}: odczytaj w siatce wysokość gongu.`, play: ["s09.height"] }));
+    out.push(mk("range", t, { voice: `range_s2_${nr(t)}`, ask: `Cel nr ${nr(t)}: oblicz odległość z odczytu wysokości.`, play: t === 2 ? ["s11.formula", "s11.height"] : ["s11.height"],
+      hint: "Odległość [m] = wysokość celu 1,0 m × 1000 / odczyt [mil]." }));
+  }
+  out.push(mk("wind"));
+  for (const t of T) out.push(mk("direction", t, { voice: `direction_s2_${nr(t)}`, ask: `Cel nr ${nr(t)}: określ na oko kierunek. Patrzysz wzdłuż osi stanowiska, czyli na godzinę 12.` }));
+  for (const t of T) out.push(mk("card", t, { voice: `card_s2_${nr(t)}`, ask: `Zaznacz cel nr ${nr(t)} na karcie ognia.`, angleOnly: true, play: t === 2 ? ["s12.card", "s12.target", "s12.weather", "s12.sun"] : ["s12.card"],
+    hint: "Liczy się kierunek: środek dołu karty to twoje stanowisko, pionowa oś to godzina 12, jedna godzina to 30°. Odległość na karcie może być przybliżona." }));
+  for (const t of T) {
+    out.push(mk("parallax", t, { corner: true }));
+    out.push(mk("dial", t, { corner: true, voice: `dial_s2_${nr(t)}`, ask: `Cel nr ${nr(t)}: odczytaj z tabel nastawy na jego odległość i wiatr i ustaw je na bębnach.` }));
+    if (t === 0) out.push(mk("safety", null, { corner: true }));
     // two shots a target (author, 20 XI): hit only when both hit; then on to the next one either way
-    if (id === "shot") { s.voice = `shot_${t + 1}`; s.ask = `Cel nr ${t + 1}: masz dwa strzały. Cel jest trafiony, gdy oba trafią.`; s.shots = [0, 1];
-      s.hint = "Patrz na wykres oddechu i strzelaj w pauzie po wydechu. Po pudle popraw nastawy przed drugim strzałem: pocisk wyżej – zmniejsz wysokość, w lewo – poprawka w prawo.";
-      s.stop = { hits: 2, misses: 2 }; s.last = t === 2; s.play = t === 2 ? ["s16.group", "s16.empty"] : ["s16.group"]; }
-    out.push(s); }
+    out.push(mk("shot", t, { corner: true, voice: `shot_${nr(t)}`, ask: `Cel nr ${nr(t)}: masz dwa strzały. Cel jest trafiony, gdy oba trafią.`, shots: [0, 1],
+      hint: "Patrz na wykres oddechu i strzelaj w pauzie po wydechu. Po pudle popraw nastawy przed drugim strzałem: pocisk wyżej – zmniejsz wysokość, w lewo – poprawka w prawo.",
+      stop: { hits: 2, misses: 2 }, last: t === 2, play: t === 2 ? ["s16.group", "s16.empty"] : ["s16.group"] }));
+  }
   return out.concat(STEPS.slice(after));
 }
 

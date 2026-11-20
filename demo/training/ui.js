@@ -26,6 +26,8 @@ const CSS = `
   font: 14px system-ui; color: #eee; max-width: 330px; }
 .tkMenu .h { color: #f2c94c; font-weight: 600; margin-bottom: 2px; }
 .tkMenu button { text-align: left; }
+#tkCorner { position: fixed; right: 12px; top: 56px; z-index: 112; background: #f4f1e8; color: #1d2a40; border-radius: 6px; padding: 8px 10px; font: 13px/1.35 system-ui; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+#tkCorner .t { font-weight: 700; margin-bottom: 2px; } #tkCorner table { border-collapse: collapse; width: 100%; } #tkCorner td { padding: 1px 6px 1px 0; }
 #tkNotes { position: fixed; right: 64px; top: 16px; z-index: 115; background: #f4f1e8; color: #1d2a40; border-radius: 6px; padding: 10px 14px;
   font: 14px/1.45 system-ui; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
 #tkNotes table { border-collapse: collapse; } #tkNotes td, #tkNotes th { padding: 1px 9px; text-align: right; } #tkNotes th { font-size: 12px; color: #555; }
@@ -118,10 +120,14 @@ export function makeUi() {
           <div style="font-size:12px;color:#7a2a12;margin-top:4px;font-weight:600">Tabela dla 15 °C i 1010 hPa. W innych warunkach uwzględnij poprawkę: zimniej albo wyższe ciśnienie → powietrze gęstsze, pocisk spada bardziej.</div>`;
         document.body.append(notes); }
       notes.style.display = "block";
+      const k = document.getElementById("tkCorner"); notes.style.top = k && k.style.display !== "none" ? k.getBoundingClientRect().bottom + 8 + "px" : "";
     },
     clock() { const k = el("div"); k.id = "tkClock"; k.style.cssText = "position:fixed;right:64px;top:14px;z-index:121;background:rgba(12,14,16,.9);color:#f2c94c;font:700 18px monospace;padding:6px 12px;border-radius:6px"; document.body.append(k); return k; },
     hideNotes() { if (notes) notes.style.display = "none"; },
-    destroy() { document.getElementById("tkClock")?.remove(); document.getElementById("tkCenter")?.remove(); bar.remove(); clearMenu(); ring && ring.remove(); notes && notes.remove(); document.getElementById("tkModal")?.remove(); },
+    // the range card in the top right corner while shooting (scenario 2); the notebook goes under it
+    corner(html) { let k = document.getElementById("tkCorner"); if (!k) { k = el("div"); k.id = "tkCorner"; document.body.append(k); } k.innerHTML = html; k.style.display = "block"; },
+    hideCorner() { const k = document.getElementById("tkCorner"); if (k) k.style.display = "none"; },
+    destroy() { document.getElementById("tkClock")?.remove(); document.getElementById("tkCenter")?.remove(); bar.remove(); clearMenu(); ring && ring.remove(); notes && notes.remove(); document.getElementById("tkModal")?.remove(); document.getElementById("tkCorner")?.remove(); },
   };
   return api;
 }

@@ -264,6 +264,111 @@
    "duration": 8.16
   }
  ],
+ "scan_2": [
+  {
+   "file": "scan_2.0.mp3",
+   "speaker": "narrator",
+   "duration": 6.48
+  }
+ ],
+ "scan_3": [
+  {
+   "file": "scan_3.0.mp3",
+   "speaker": "narrator",
+   "duration": 6.48
+  }
+ ],
+ "height_s2_1": [
+  {
+   "file": "height_s2_1.0.mp3",
+   "speaker": "narrator",
+   "duration": 4.08
+  }
+ ],
+ "range_s2_1": [
+  {
+   "file": "range_s2_1.0.mp3",
+   "speaker": "narrator",
+   "duration": 4.24
+  }
+ ],
+ "height_s2_2": [
+  {
+   "file": "height_s2_2.0.mp3",
+   "speaker": "narrator",
+   "duration": 4.0
+  }
+ ],
+ "range_s2_2": [
+  {
+   "file": "range_s2_2.0.mp3",
+   "speaker": "narrator",
+   "duration": 4.16
+  }
+ ],
+ "height_s2_3": [
+  {
+   "file": "height_s2_3.0.mp3",
+   "speaker": "narrator",
+   "duration": 4.0
+  }
+ ],
+ "range_s2_3": [
+  {
+   "file": "range_s2_3.0.mp3",
+   "speaker": "narrator",
+   "duration": 4.16
+  }
+ ],
+ "direction_s2_1": [
+  {
+   "file": "direction_s2_1.0.mp3",
+   "speaker": "narrator",
+   "duration": 7.44
+  }
+ ],
+ "direction_s2_2": [
+  {
+   "file": "direction_s2_2.0.mp3",
+   "speaker": "narrator",
+   "duration": 7.28
+  }
+ ],
+ "direction_s2_3": [
+  {
+   "file": "direction_s2_3.0.mp3",
+   "speaker": "narrator",
+   "duration": 7.52
+  }
+ ],
+ "card_s2_1": [
+  {
+   "file": "card_s2_1.0.mp3",
+   "speaker": "narrator",
+   "duration": 2.88
+  }
+ ],
+ "card_s2_2": [
+  {
+   "file": "card_s2_2.0.mp3",
+   "speaker": "narrator",
+   "duration": 2.88
+  }
+ ],
+ "card_s2_3": [
+  {
+   "file": "card_s2_3.0.mp3",
+   "speaker": "narrator",
+   "duration": 2.88
+  }
+ ],
+ "dial_s2_1": [
+  {
+   "file": "dial_s2_1.0.mp3",
+   "speaker": "narrator",
+   "duration": 6.4
+  }
+ ],
  "shot_1": [
   {
    "file": "shot_1.0.mp3",
@@ -271,9 +376,9 @@
    "duration": 5.52
   }
  ],
- "scan_2": [
+ "dial_s2_2": [
   {
-   "file": "scan_2.0.mp3",
+   "file": "dial_s2_2.0.mp3",
    "speaker": "narrator",
    "duration": 6.48
   }
@@ -285,9 +390,9 @@
    "duration": 5.52
   }
  ],
- "scan_3": [
+ "dial_s2_3": [
   {
-   "file": "scan_3.0.mp3",
+   "file": "dial_s2_3.0.mp3",
    "speaker": "narrator",
    "duration": 6.48
   }

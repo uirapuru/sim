@@ -118,16 +118,20 @@ test("the range question does not hold on the formula (it shows the answer)", ()
   assert.ok(st.hold && !st.hold.key.startsWith("s11."), JSON.stringify(st.hold));
 });
 
-test("scenario 2: three targets, each measured and fired at; wind and safety once; fire stops at two hits or two misses", async () => {
+test("scenario 2: find all, measure all (height only), directions, card, then shoot target by target", async () => {
   const { scenarioSteps } = await import("./steps_scene1.js");
-  const s2 = scenarioSteps(2), ids = s2.map(s => s.id);
+  const s2 = scenarioSteps(2), ids = s2.map(s => s.id), pos = id => ids.indexOf(id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(s2.filter(s => s.baseId === "shot").length, 3);
+  assert.equal(s2.filter(s => s.baseId === "width").length, 0);
+  assert.deepEqual(["scan", "height", "range", "direction", "card", "dial", "shot"].map(b => s2.filter(s => s.baseId === b).map(s => s.tgt)), Array(7).fill([0, 1, 2]));
+  assert.ok(pos("scan_3") < pos("zoom") && pos("zoom") < pos("height") && pos("range_3") < pos("direction") && pos("direction_3") < pos("card"));
+  assert.ok(pos("card_3") < pos("parallax") && pos("shot") < pos("parallax_2") && pos("shot_3") < pos("safe"));
   assert.equal(s2.filter(s => s.baseId === "wind").length, 1);
   assert.equal(s2.filter(s => s.baseId === "safety").length, 1);
-  assert.deepEqual(s2.filter(s => s.baseId === "dial").map(s => s.tgt), [0, 1, 2]);
-  for (const s of s2.filter(s => s.baseId === "shot")) assert.deepEqual(s.stop, { hits: 2, misses: 2 });
+  for (const s of s2.filter(s => s.kind === "fire")) assert.deepEqual([s.stop, s.shots], [{ hits: 2, misses: 2 }, [0, 1]]);
   assert.deepEqual(s2.filter(s => s.kind === "fire").map(s => s.last), [false, false, true]);
+  assert.ok(s2.filter(s => s.baseId === "card").every(s => s.angleOnly));
+  assert.ok(s2.filter(s => ["parallax", "dial", "safety", "shot"].includes(s.baseId)).every(s => s.corner));
   assert.equal(ids[ids.length - 1], "back");
   assert.equal(scenarioSteps(1), STEPS);
 });
