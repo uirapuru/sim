@@ -118,9 +118,10 @@ export async function startTask(mode, ctx, opts = {}) {
         if (demo.kestrelInsetSide) demo.kestrelInsetSide("right");   // the Kestrel is to be read: away from the question (author, 20 XI)
         // speed off the Kestrel and the side the wind blows from, in one answer (author, 19 XI)
         const inp = document.createElement("input"); inp.inputMode = "decimal"; const unit = document.createElement("span"); unit.textContent = "m/s";
-        const box = document.createElement("div"); box.className = "choices"; box.style.flexBasis = "100%"; let from = null; const FROM = h => +h.match(/godziny (\d+)/)[1];
-        for (const o of st.options) { const bt = document.createElement("button"); bt.textContent = o;
-          bt.onclick = () => { from = FROM(o); for (const x of box.children) x.classList.toggle("main", x === bt); }; box.append(bt); }
+        // the hour the wind blows from: twelve buttons in clock order (author, 20 XI: wind from any hour)
+        const box = document.createElement("div"); box.style.cssText = "flex-basis:100%;display:grid;grid-template-columns:repeat(6,1fr);gap:6px"; let from = null;
+        for (const h of st.hours) { const bt = document.createElement("button"); bt.textContent = `godz. ${h}`;
+          bt.onclick = () => { from = h; for (const x of box.children) x.classList.toggle("main", x === bt); }; box.append(bt); }
         const ok = document.createElement("button"); ok.className = "main"; ok.textContent = "Zatwierdź";
         const submit = () => { if (parseNumber(inp.value) == null) { view.feedback("Wpisz prędkość wiatru.", "info"); return; }
           if (from == null) { view.feedback("Wybierz, skąd wieje wiatr.", "info"); return; }

@@ -10,7 +10,7 @@ const SCENES = { 1: "Linia wyjściowa", 2: "Ładowanie magazynka", 3: "Na linię
 let RANGE = 625, ELEV = 6.5, WIND = 1.6;                   // m, mrad up, mrad left (dialled); the training mode changes them
 let COND = { range: 625, wind: 3.0, windFrom: 9 }, PLX_SET = 600, QUIZ = false;   // wind in m/s from 9 or 3 o'clock; QUIZ hides answers
 const f1 = v => v.toFixed(1).replace(".", ",");
-const windSide = () => COND.windFrom === 9 ? "z lewej" : "z prawej";
+const windSide = () => COND.windFrom > 6 ? "z lewej" : "z prawej";   // wind from 7-11 o'clock is from the left, 1-5 from the right
 const DISP = [[0.06, 0.05], [-0.11, -0.03], [0.04, -0.12]];  // mrad, right / up: small group of the three shots
 const SOUND = 343;
 
@@ -591,7 +591,7 @@ export async function play(ctx) {
   B(9, "s09.note", (S, u) => { writing(S); S.cam = { kind: "follow", off: [0.9, 0.7, 0.3], look: [0.25, 0.1, 0.9] }; S.ov.note = card("62%", "12%", "330px", reveal(NB_(), u)); });
   // 10 wind
   B(10, "s10.look", (S, u) => { prone(S); const k = ease(seg(u, 0.35, 0.6));
-    S.cam = { kind: "world", pos: W(-2.2, -3.2, 1.0), look: W(40, 14, 1.0), focus: W(1.5, -1.8, 0.15).lerp(W(42, 15, 3), k), focusExact: true, aperture: 0.0035 * (1 - k) }; S.ov.windLook = [`Trawa pochyla się w ${COND.windFrom === 9 ? "prawo" : "lewo"} · liście w ciągłym ruchu<br><b>wiatr ${windSide()}, ${Math.max(1, Math.round(COND.wind) - 1)}–${Math.round(COND.wind) + 1} m/s</b>`, "left:50%;transform:translateX(-50%);top:10%;background:rgba(0,0,0,.7);color:#fff;padding:8px 14px;border-radius:6px;font:18px system-ui;text-align:center"]; });
+    S.cam = { kind: "world", pos: W(-2.2, -3.2, 1.0), look: W(40, 14, 1.0), focus: W(1.5, -1.8, 0.15).lerp(W(42, 15, 3), k), focusExact: true, aperture: 0.0035 * (1 - k) }; S.ov.windLook = [`Trawa pochyla się w ${COND.windFrom > 6 ? "prawo" : "lewo"} · liście w ciągłym ruchu<br><b>wiatr ${windSide()}, ${Math.max(1, Math.round(COND.wind) - 1)}–${Math.round(COND.wind) + 1} m/s</b>`, "left:50%;transform:translateX(-50%);top:10%;background:rgba(0,0,0,.7);color:#fff;padding:8px 14px;border-radius:6px;font:18px system-ui;text-align:center"]; });
   const KES = () => `<div style="background:#1a1c18;border-radius:14px;padding:12px;width:230px"><div style="background:#a9b8a0;color:#111;border-radius:6px;padding:10px 12px;font:16px/1.5 monospace">
     <div style="display:flex;justify-content:space-between"><b>WIND</b><span>${COND.wind.toFixed(1)} m/s</span></div><div style="display:flex;justify-content:space-between"><b>DIR</b><span>z godz. ${COND.windFrom}</span></div>
     <div style="display:flex;justify-content:space-between"><b>TEMP</b><span>8.0 °C</span></div><div style="display:flex;justify-content:space-between"><b>BARO</b><span>1005 hPa</span></div>
@@ -609,7 +609,7 @@ export async function play(ctx) {
   // after the reading the Kestrel lies on the ground beside the shooter, display up, showing the wind in m/s
   B(10, "s10.note", (S, u) => { writing(S); S.props.kestrel = "ground";
     S.cam = u < 0.45 ? { kind: "kestrelGround" } : { kind: "follow", off: [0.9, 0.7, 0.3], look: [0.25, 0.1, 0.9] };
-    if (u >= 0.45) S.ov.note = card("62%", "12%", "330px", reveal([...NB_(), `Wiatr ${f1(COND.wind)} m/s z godz. ${COND.windFrom}`, `Trawa w ${COND.windFrom === 9 ? "prawo" : "lewo"}, liście w ruchu`], 0.6 + seg(u, 0.45, 1) * 0.4)); });
+    if (u >= 0.45) S.ov.note = card("62%", "12%", "330px", reveal([...NB_(), `Wiatr ${f1(COND.wind)} m/s z godz. ${COND.windFrom}`, `Trawa w ${COND.windFrom > 6 ? "prawo" : "lewo"}, liście w ruchu`], 0.6 + seg(u, 0.45, 1) * 0.4)); });
   // 11 distance from the formula
   const F = () => { const h = +(1000 / RANGE).toFixed(1), w = +(500 / RANGE).toFixed(1); return ["odległość = wymiar celu [m] × 1000 / odczyt [mil]", `wysokość: 1,0 × 1000 / ${f1(h)} = <b>${Math.round(1000 / h)} m</b>`, `szerokość: 0,5 × 1000 / ${f1(w)} = <b>${Math.round(500 / w)} m</b>`]; };
   const formula = u => [`<div style="font:600 15px system-ui;color:#f2c94c;margin-bottom:8px">Odległość z siatki mil-dot</div><div style="font:22px/1.7 system-ui">${reveal(F(), u)}</div>`, "left:50%;transform:translateX(-50%);top:16%;background:rgba(0,0,0,.8);color:#fff;padding:16px 26px;border-radius:8px;min-width:560px"];
@@ -800,14 +800,16 @@ export async function play(ctx) {
     turnStand(c.bearing ?? 0);                                          // also moves the gong to the range and bearing
     losDir.copy(GC).sub(RL(EYE)).normalize(); losRight.copy(losDir).cross(up).normalize(); losUp.copy(losRight).cross(losDir).normalize();
     if (view) { rows = BAL.rows; ELEV = 6.5; WIND = 1.6; TOF = BAL.tof; PLX_SET = 600; }
-    else { const side = c.windFrom === 9 ? 1 : -1, d = tableDope(c, TAB);
+    else { const { windSide: wSide, windFactor } = await import("./training/conditions.js" + ver), side = wSide(c.windFrom) * windFactor(c.windFrom), d = tableDope(c, TAB);
       // the flight in the attempt's air (temperature, pressure): drop and drift grow in denser air
       rows = TAB.rows.map(r => { const k = atmK(c, TAB, r[0]); return [r[0], k.tof || r[1], -r[2] * k.drop, side * r[3] * k.drift * c.wind]; });
       ELEV = d.elev; WIND = d.wind; TOF = atmK(c, TAB, RANGE).tof; PLX_SET = RANGE; }
     SOUND_BACK = RANGE / SOUND; ARC = arcOf(); marksDrawn = -1; drawLcd();
     // the wind is reckoned from the line of fire: it turns with the stand
     if (windDir0) { const a = Math.atan2(fwd0.x * fwd.z - fwd0.z * fwd.x, fwd0.x * fwd.x + fwd0.z * fwd.z);
-      ctx.windDirU.value.copy(windDir0).multiplyScalar(c.windFrom === 9 ? 1 : -1).rotateAround(new THREE.Vector2(), a); }
+      // windDir0 is the wind from 9 o'clock (blowing to 3); any other hour turns it clockwise by (hour - 9) x 30 deg
+      const right0 = left0.clone().negate(), cw = Math.sign(Math.atan2(fwd0.x * right0.z - fwd0.z * right0.x, fwd0.x * right0.x + fwd0.z * right0.z)) || 1;
+      ctx.windDirU.value.copy(windDir0).rotateAround(new THREE.Vector2(), a + cw * ((c.windFrom ?? 9) - 9) * Math.PI / 6); }
     // time of day and weather of the attempt (author, 18 XI); the view conditions: 10:00, clear
     if (window.__sim && window.__sim.setHour) window.__sim.setHour(c.hour ?? 10, 8);
     if (window.__sim && window.__sim.setWeather) window.__sim.setWeather(c.weather || "clear", RANGE);

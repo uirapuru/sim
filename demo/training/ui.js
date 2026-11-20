@@ -114,7 +114,7 @@ export function makeUi() {
       if (!notes) { notes = el("div"); notes.id = "tkNotes";
         const rows = tab.table.map(([d, e, w]) => `<tr><td>${d}</td><td>${f1(e)}</td><td>${(Math.round(w * 100) / 100).toFixed(2).replace(".", ",")}</td></tr>`).join("");
         notes.innerHTML = `<div class="t">Tabela balistyczna · .308 175 gr</div><table><tr><th>odległość [m]</th><th>wysokość [mrad ↑]</th><th>wiatr [mrad na 1 m/s]</th></tr>${rows}</table>
-          <div style="font-size:12px;color:#555;margin-top:6px">Wiatr pełny, z boku. Wiatr z lewej (godz. 9) → poprawka w lewo (L).</div>
+          <div style="font-size:12px;color:#555;margin-top:6px">Wiatr pełny, z boku (godz. 3 i 9). Z godz. 2, 4, 8, 10 prawie pełny (×0,9), z godz. 1, 5, 7, 11 połowa. Wiatr z lewej (7–11) → poprawka w lewo (L), z prawej (1–5) → w prawo (P).</div>
           <div style="font-size:12px;color:#7a2a12;margin-top:4px;font-weight:600">Tabela dla 15 °C i 1010 hPa. W innych warunkach uwzględnij poprawkę: zimniej albo wyższe ciśnienie → powietrze gęstsze, pocisk spada bardziej.</div>`;
         document.body.append(notes); }
       notes.style.display = "block";

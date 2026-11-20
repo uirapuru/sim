@@ -6,7 +6,7 @@
 // settings; graded by the shot itself, see conditions.js). Values may be functions of the drawn conditions c.
 // the target on the range card (svg 400 x 232, stand at 200, 210, 190 px = 1000 m), the same in scene1.js
 export const cardPoint = c => { const r = c.range * 0.19, a = (c.bearing ?? 0) * Math.PI / 180; return { x: 200 + r * Math.sin(a), y: 210 - r * Math.cos(a) }; };
-const fromText = c => c.windFrom === 9 ? "Z godziny 9, czyli z lewej" : "Z godziny 3, czyli z prawej";
+const fromText = c => `Z godziny ${c.windFrom}, czyli ${c.windFrom > 6 ? "z lewej" : "z prawej"}${c.windFrom === 3 || c.windFrom === 9 ? "" : c.windFrom < 3 || c.windFrom > 9 ? " i z przodu" : " i z tyłu"}`;
 
 // the training is grouped into four sections over the 18 scenes of the lesson (author, 18 XI); a run started at a
 // section goes on through the following ones
@@ -82,9 +82,9 @@ export const STEPS = [
     hint: "Gong ma 0,5 m szerokości. Liczysz tak samo, w poziomie." },
   // speed and direction in one question (author, 19 XI)
   { id: "wind", chapter: 10, kind: "wind", tol: 0.2, correct: fromText, hold: { key: "s10.reading", u: 0.6 },
-    options: ["Z godziny 9, czyli z lewej", "Z godziny 3, czyli z prawej", "Z godziny 12, czyli z przodu", "Z godziny 6, czyli z tyłu"],
+    hours: [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],   // the answer is a clock hour (wind from any hour, author, 20 XI)
     ask: "Odczytaj z Kestrela prędkość wiatru i określ, skąd wieje.", play: ["s10.look", "s10.kestrel", "s10.reading", "s10.note"],
-    hint: "Kestrel trzymasz wiatraczkiem do wiatru, aż wynik się ustali; prędkość jest w górnym wierszu ekranu. Kierunek pokazuje Kestrel (DIR) i trawa: pochyla się w stronę, w którą wieje wiatr." },
+    hint: "Kestrel trzymasz wiatraczkiem do wiatru, aż wynik się ustali; prędkość jest w wierszu WIND. Kierunek, z którego wieje, pokazuje DIR jako godzinę: 12 to kierunek strzału, 3 z prawej, 9 z lewej." },
   { id: "range", chapter: 11, kind: "number", unit: "m", answer: c => c.range, tol: "5%", hold: { key: "s10.note", u: 0.97 },   /* not on the formula: it shows the result */
     ask: "Oblicz odległość do celu ze swoich odczytów.", play: ["s11.formula", "s11.height", "s11.width"],
     hint: "Odległość [m] = wymiar celu [m] × 1000 / odczyt [mil]. Policz z wysokości i z szerokości; wyniki powinny być bliskie." },
@@ -102,7 +102,7 @@ export const STEPS = [
     hint: "Pokrętło paralaksy jest z lewej strony lunety. Ustaw je na odległość do celu." },
   { id: "dial", chapter: 13, kind: "dial",
     ask: "Odczytaj z tabel nastawy na swoją odległość i wiatr i ustaw je na bębnach.", play: ["s13.elev", "s13.wind"],
-    hint: "Wysokość: znajdź w tabeli wiersze nad i pod twoją odległością i weź wartość pomiędzy. Wiatr: poprawka z tabeli na 1 m/s razy prędkość wiatru; wiatr z lewej to poprawka w lewo. Tabele są dla 15 °C i 1010 hPa. Na każde 10 °C chłodniej dodaj do wysokości około 1 % na 300 m, 2 % na 600 m i 3 % na 900 m, a na każde 10 hPa więcej około 0,5 %. Cieplej albo przy niższym ciśnieniu ujmij tyle samo." },
+    hint: "Wysokość: znajdź w tabeli wiersze nad i pod twoją odległością i weź wartość pomiędzy. Wiatr: poprawka z tabeli na 1 m/s razy prędkość wiatru, razy wartość wiatru: z godziny 3 i 9 pełna, z 2, 4, 8 i 10 prawie pełna (×0,9), z 1, 5, 7 i 11 połowa. Wiatr z lewej (7–11) to poprawka w lewo, z prawej (1–5) w prawo. Tabele są dla 15 °C i 1010 hPa. Na każde 10 °C chłodniej dodaj do wysokości około 1 % na 300 m, 2 % na 600 m i 3 % na 900 m, a na każde 10 hPa więcej około 0,5 %. Cieplej albo przy niższym ciśnieniu ujmij tyle samo." },
   { id: "safety", chapter: 14, kind: "action", target: "safety_selector", hold: { key: "s14.safety", u: 0.05 }, action: "Przestaw bezpiecznik z Z na P",
     ask: "Komenda: „Ognia!”.", play: ["s14.cmd", "s14.safety"],
     hint: "Skrzydełko bezpiecznika jest nad chwytem. Z to zabezpieczony, P to ogień pojedynczy." },

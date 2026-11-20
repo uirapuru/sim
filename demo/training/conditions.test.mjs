@@ -12,7 +12,7 @@ test("rolled conditions stay in range", () => {
     const c = rollConditions(rng);
     assert.ok(Number.isInteger(c.range) && c.range >= 300 && c.range <= 900, JSON.stringify(c));
     assert.ok(c.wind >= 2 && c.wind <= 5 && Math.abs(c.wind * 10 - Math.round(c.wind * 10)) < 1e-9, JSON.stringify(c));
-    assert.ok(c.windFrom === 9 || c.windFrom === 3);
+    assert.ok([1, 2, 3, 4, 5, 7, 8, 9, 10, 11].includes(c.windFrom), JSON.stringify(c));
     assert.ok(c.hour >= 7.5 && c.hour <= 17.01, JSON.stringify(c));
     assert.ok(["clear", "drizzle", "mist", "snow"].includes(c.weather), JSON.stringify(c));
     assert.ok(c.temp >= -6 && c.temp <= 24 && c.pressure >= 990 && c.pressure <= 1035, JSON.stringify(c));
@@ -20,6 +20,19 @@ test("rolled conditions stay in range", () => {
     assert.ok([11, 12, 1].includes(c.clock), JSON.stringify(c));
     assert.ok(Math.abs(c.bearing - { 11: -30, 12: 0, 1: 30 }[c.clock]) <= 6, JSON.stringify(c));
   }
+});
+
+test("every wind hour is drawn; the cross value: full at 3 and 9, half at 1, 5, 7, 11; the side follows the hour", async () => {
+  const { windFactor, windSide } = await import("./conditions.js");
+  const seen = new Set(); for (let i = 0; i < 2000; i++) seen.add(rollConditions(rng).windFrom);
+  assert.equal(seen.size, 10);
+  assert.ok(Math.abs(windFactor(3) - 1) < 1e-9 && Math.abs(windFactor(9) - 1) < 1e-9 && Math.abs(windFactor(1) - 0.5) < 1e-9 && Math.abs(windFactor(11) - 0.5) < 1e-9);
+  assert.ok(Math.abs(windFactor(2) - Math.sqrt(3) / 2) < 1e-9);
+  const base = { range: 600, wind: 4, temp: 15, pressure: 1010 };
+  const d9 = tableDope({ ...base, windFrom: 9 }, tab), d7 = tableDope({ ...base, windFrom: 7 }, tab), d1 = tableDope({ ...base, windFrom: 1 }, tab);
+  assert.ok(d9.wind > 0 && d7.wind > 0 && d1.wind < 0);                          // from the left: correction left (> 0)
+  assert.ok(Math.abs(d7.wind - d9.wind / 2) < 1e-9 && Math.abs(d1.wind + d9.wind / 2) < 1e-9);
+  for (const h of [1, 2, 4, 5, 7, 8, 10, 11]) assert.equal(impactFor({ ...base, windFrom: h }, tableDope({ ...base, windFrom: h }, tab), [0, 0], tab).hit, true, "hour " + h);
 });
 
 test("the view conditions and their settings hit", () => {

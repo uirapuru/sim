@@ -9,6 +9,13 @@ export const VIEW_CONDITIONS = { range: 625, wind: 3.0, windFrom: 9, hour: 10, w
 // The wind (windFrom) is reckoned from the line of fire, the shooter turns to the target.
 export const CLOCK_DEG = { 11: -30, 12: 0, 1: 30 };
 
+// wind from any clock hour but 12 and 6 (author, 20 XI); hours are reckoned from the line of fire. The cross part of
+// the wind moves the bullet: sin(hour x 30 deg) of it - full at 3 and 9, 0.87 at 2, 4, 8, 10, half at 1, 5, 7, 11.
+// From 7-11 (left) the bullet goes right: the correction is to the left (+1); from 1-5 (right) to the right (-1)
+export const WIND_HOURS = [1, 2, 3, 4, 5, 7, 8, 9, 10, 11];
+export const windFactor = h => Math.abs(Math.sin(h * Math.PI / 6));
+export const windSide = h => h > 6 ? 1 : -1;
+
 // weather: "clear", "drizzle" (light rain under cloud), "mist" (the gong still in sight, paler) or now and then "snow"
 // (a little snow on the fields, light snowfall)
 export const WEATHER = { clear: "pogodnie", drizzle: "drobny deszcz", mist: "lekka mgła", snow: "lekki śnieg" };
@@ -18,7 +25,7 @@ export const TABLE_ATM = { temp: 15, pressure: 1010 };
 // hour: daylight of the scene's season (September sun), 7:30-17:00 in 5-minute steps;
 // temperature [deg C] and pressure [hPa] to suit the weather
 export function rollConditions(rng = Math.random) {
-  const range = 300 + Math.floor(rng() * 601), wind = (20 + Math.floor(rng() * 31)) / 10, windFrom = rng() < 0.5 ? 9 : 3;
+  const range = 300 + Math.floor(rng() * 601), wind = (20 + Math.floor(rng() * 31)) / 10, windFrom = WIND_HOURS[Math.floor(rng() * WIND_HOURS.length)];
   const hour = 7.5 + Math.floor(rng() * 115) * 5 / 60, w = rng();
   const weather = w < 0.43 ? "clear" : w < 0.65 ? "drizzle" : w < 0.88 ? "mist" : "snow";
   const span = (a, b, step = 1) => a + Math.floor(rng() * ((b - a) / step + 1)) * step;
@@ -48,13 +55,13 @@ export function rowAt(tab, d) {
 
 // the exact settings for c (what the tables give when read without rounding)
 export function tableDope(c, tab) {
-  const r = rowAt(tab, c.range), side = c.windFrom === 9 ? 1 : -1, k = atmK(c, tab, c.range);
+  const r = rowAt(tab, c.range), side = windSide(c.windFrom) * windFactor(c.windFrom), k = atmK(c, tab, c.range);
   return { elev: r[2] * k.drop / c.range * 1000, wind: side * r[3] * k.drift * c.wind / c.range * 1000 };
 }
 
 // disp: [right, up] in mrad, the shot's own dispersion
 export function impactFor(c, dial, disp, tab) {
-  const r = rowAt(tab, c.range), k = c.range / 1000, side = c.windFrom === 9 ? 1 : -1, a = atmK(c, tab, c.range);
+  const r = rowAt(tab, c.range), k = c.range / 1000, side = windSide(c.windFrom) * windFactor(c.windFrom), a = atmK(c, tab, c.range);
   const y = -r[2] * a.drop + (dial.elev + disp[1]) * k, x = side * r[3] * a.drift * c.wind - (dial.wind - disp[0]) * k;
   return { x, y, hit: Math.abs(x) <= 0.25 && Math.abs(y) <= 0.5, tof: a.tof };
 }
