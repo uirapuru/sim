@@ -2,7 +2,7 @@
 // notebook with the ballistic tables, feedback, timer and the exam result. No grading here (check.js, runner.js).
 
 const CSS = `
-#tkBar { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); z-index: 120; width: min(760px, calc(100vw - 120px));
+#tkBar { position: fixed; left: 50%; top: 52px; transform: translateX(-50%); z-index: 120; width: min(760px, calc(100vw - 120px));
   background: rgba(12,14,16,.9); color: #eee; border-radius: 8px; padding: 10px 14px; font: 15px/1.4 system-ui, sans-serif; box-shadow: 0 4px 18px rgba(0,0,0,.4); }
 #tkBar.side { left: 16px; transform: none; width: min(480px, 42vw); }
 #tkBar .meta { font-size: 12px; color: #aaa; display: flex; justify-content: space-between; gap: 10px; }

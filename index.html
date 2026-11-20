@@ -6,10 +6,14 @@
 <title>Kijewo – próba terenu</title>
 <style>
   html, body { margin: 0; height: 100%; background: #9fb6c9; overflow: hidden; font: 14px system-ui, sans-serif; }
-  #hud { position: fixed; left: 12px; top: 12px; background: rgba(0,0,0,.65); color: #fff; padding: 10px 12px; border-radius: 6px; max-width: 380px; }
+  #hud { position: fixed; left: 12px; top: 52px; background: rgba(0,0,0,.65); color: #fff; padding: 10px 12px; border-radius: 6px; max-width: 380px; }
   #hud b { color: #ffd34d; }
   #hud button { margin: 4px 4px 0 0; }
   #info { position: fixed; right: 12px; bottom: 12px; background: rgba(0,0,0,.65); color: #fff; padding: 6px 10px; border-radius: 6px; font-family: monospace; }
+  #quality { position: fixed; left: 12px; top: 12px; z-index: 140; display: flex; gap: 6px; align-items: center; font: 13px system-ui, sans-serif; }
+  #quality button { background: rgba(12,14,16,.8); color: #eee; border: 1px solid #555; border-radius: 5px; padding: 5px 10px; font: inherit; cursor: pointer; }
+  #quality button.hi { background: #f2c94c; color: #111; border-color: #f2c94c; font-weight: 600; }
+  #quality #fps { background: rgba(12,14,16,.7); color: #9fe39f; border-radius: 5px; padding: 5px 8px; font: 12px monospace; min-width: 52px; text-align: center; }
   #load { position: fixed; inset: 0; display: grid; place-items: center; color: #fff; background: #222; font-size: 18px; }
 </style>
 <script type="importmap">
@@ -36,6 +40,7 @@
   Wiatr: <input id="wind" type="range" min="0" max="12" step="0.5" value="4" style="width:120px;vertical-align:middle"> <span id="windv">4 m/s</span>
 </div>
 <div id="info"></div>
+<div id="quality"><button id="qualityBtn" title="Przełącz jakość grafiki">Grafika: prosta</button><span id="fps">– fps</span></div>
 <script type="module">
 import * as THREE from "three";
 import { Sky } from "three/addons/objects/Sky.js";
@@ -67,8 +72,14 @@ for (const b of meta.buildings_osm || []) {
   for (let r = 0; r < GH; r++) for (let c = 0; c < GW; c++) if (inPoly((c + 0.5) * CELL, (r + 0.5) * CELL, P)) heights[r * GW + c] = Math.min(heights[r * GW + c], g100);
 }
 
+// graphics quality (author, 20 XI): "lo" by default - for phones and weak computers, very simple but readable;
+// "hi" - the full picture as before. The button at the top left switches it without a reload; the choice is kept
+// in this browser (localStorage). ?hi / ?lo in the address force a mode
+const QS = new URLSearchParams(location.search);
+let QUALITY = QS.has("hi") ? "hi" : QS.has("lo") ? "lo" : (localStorage.getItem("simQuality") || "lo");
+const pixelRatioFor = q => LITE ? 0.3 : q === "hi" ? Math.min(devicePixelRatio, 2) : Math.min(devicePixelRatio, 1) * 0.75;
 const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
-renderer.setPixelRatio(LITE ? 0.3 : Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(pixelRatioFor(QUALITY));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = !LITE;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -168,11 +179,23 @@ function gridMesh(arr, w, h, cell, x0, z0) {
   geo.computeVertexNormals();
   return geo;
 }
+// every step-th height sample: lo terrain (far 8 m, near 2 m cells instead of 2 m and 1 m)
+function gridMeshStep(arr, w, h, cell, x0, z0, step) {
+  if (step === 1) return gridMesh(arr, w, h, cell, x0, z0);
+  const w2 = Math.floor((w - 1) / step) + 1, h2 = Math.floor((h - 1) / step) + 1, sub = new Uint16Array(w2 * h2);
+  for (let r = 0; r < h2; r++) for (let c = 0; c < w2; c++) sub[r * w2 + c] = arr[r * step * w + c * step];
+  const geo = new THREE.PlaneGeometry((w2 - 1) * cell * step, (h2 - 1) * cell * step, w2 - 1, h2 - 1);
+  geo.rotateX(-Math.PI / 2); geo.translate(x0 + (w2 - 1) * cell * step / 2 + cell / 2, 0, z0 + (h2 - 1) * cell * step / 2 + cell / 2);
+  const p = geo.attributes.position; for (let i = 0; i < p.count; i++) p.setY(i, sub[i] / 100);
+  geo.computeVertexNormals(); return geo;
+}
+const terrainGeo = { lo: null, hi: null };   // built when first needed: a phone never builds the 4 million triangles
+const terrainFor = q => terrainGeo[q] ??= { far: gridMeshStep(heights, GW, GH, CELL, 0, 0, q === "hi" ? 1 : 4), near: gridMeshStep(nearH, NEAR.grid, NEAR.grid, 1, NEAR.x0, NEAR.z0, q === "hi" ? 1 : 2) };
 const farMat = terrainMaterial(await tex(T + "orto.jpg"));
 farMat.polygonOffset = true; farMat.polygonOffsetFactor = 6; farMat.polygonOffsetUnits = 6;
-const far = new THREE.Mesh(gridMesh(heights, GW, GH, CELL, 0, 0), farMat);
+const far = new THREE.Mesh(terrainFor(QUALITY).far, farMat);
 far.position.y = -0.25; far.receiveShadow = true;
-const near = new THREE.Mesh(gridMesh(nearH, NEAR.grid, NEAR.grid, 1, NEAR.x0, NEAR.z0), terrainMaterial(await tex(T + "orto_near.jpg")));
+const near = new THREE.Mesh(terrainFor(QUALITY).near, terrainMaterial(await tex(T + "orto_near.jpg")));
 near.receiveShadow = true;
 scene.add(far, near);
 
@@ -255,8 +278,8 @@ const needleTex = new THREE.CanvasTexture(noiseCanvas(256, (g, s) => {
   for (let i = 0; i < 9000; i++) { const v = 60 + rnd() * 160; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(rnd() * s, rnd() * s, 1 + rnd() * 3, 1 + rnd() * 2); }
 }));
 needleTex.wrapS = needleTex.wrapT = THREE.RepeatWrapping;
-function crownGeometry() {        // irregular blob of a Scots pine crown, height 1, radius ~1
-  const g = new THREE.IcosahedronGeometry(1, 3), p = g.attributes.position;
+function crownGeometry(detail = 3) {        // irregular blob of a Scots pine crown, height 1, radius ~1 (lo: detail 0, 20 triangles)
+  const g = new THREE.IcosahedronGeometry(1, detail), p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
     const n = 0.75 + 0.35 * Math.sin(x * 5.1 + y * 3.7) * Math.cos(z * 4.3 - y * 2.9) + 0.15 * Math.sin(x * 13 + z * 11);
@@ -264,9 +287,11 @@ function crownGeometry() {        // irregular blob of a Scots pine crown, heigh
   }
   g.computeVertexNormals(); return g;
 }
-const crowns = new THREE.InstancedMesh(crownGeometry(), new THREE.MeshLambertMaterial({ map: needleTex }), nTrees);
+const crownGeo = { hi: crownGeometry(3), lo: crownGeometry(0) };
+const crowns = new THREE.InstancedMesh(crownGeo[QUALITY], new THREE.MeshLambertMaterial({ map: needleTex }), nTrees);
 const trunkGeo = new THREE.CylinderGeometry(0.1, 0.17, 1, 6); trunkGeo.translate(0, 0.5, 0);
-const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x6e5444 }), nTrees);
+const trunkGeoLo = new THREE.CylinderGeometry(0.1, 0.17, 1, 3, 1, true); trunkGeoLo.translate(0, 0.5, 0);
+const trunks = new THREE.InstancedMesh(QUALITY === "hi" ? trunkGeo : trunkGeoLo, new THREE.MeshLambertMaterial({ color: 0x6e5444 }), nTrees);
 {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), col = new THREE.Color();
   for (let i = 0; i < nTrees; i++) {
@@ -281,6 +306,21 @@ const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({
 }
 crowns.castShadow = trunks.castShadow = crowns.receiveShadow = true;
 scene.add(crowns, trunks);
+
+// lo: no shadows (the shadow map is not drawn at all), no grass tufts (the orthophoto is the ground), low-poly trees,
+// coarser terrain, fewer pixels; scene scripts read window.__quality (scene1.js: no depth-of-field pass in lo)
+function applyQuality(q) {
+  QUALITY = q; const hi = q === "hi";
+  renderer.setPixelRatio(pixelRatioFor(q)); renderer.setSize(innerWidth, innerHeight);
+  sun.castShadow = hi && !LITE;
+  grass.visible = hi; if (hi) grassCenter.set(1e9, 1e9);           // placed again around the camera on the next frame
+  crowns.geometry = crownGeo[q]; trunks.geometry = hi ? trunkGeo : trunkGeoLo;
+  const tg = terrainFor(q); far.geometry = tg.far; near.geometry = tg.near; far.position.y = hi ? -0.25 : -0.45;
+  window.__quality.mode = q; for (const f of window.__quality.listeners) f(q);
+  const b = document.getElementById("qualityBtn"); b.textContent = hi ? "Grafika: pełna" : "Grafika: prosta"; b.classList.toggle("hi", hi);
+}
+window.__quality = { mode: QUALITY, listeners: [], set: q => { localStorage.setItem("simQuality", q); applyQuality(q); } };
+document.getElementById("qualityBtn").onclick = () => window.__quality.set(QUALITY === "hi" ? "lo" : "hi");
 
 // ---------- buildings ----------
 const plaster = new THREE.CanvasTexture(noiseCanvas(256, (g, s) => {
@@ -463,7 +503,9 @@ for (let d = 100; d <= 1000; d += 100) {
 // ---------- animated soldier (Meshy: multi-view model, A-pose, Mixamo rig, library + text-to-motion clips) ----------
 const mixers = [];
 {
-  const gltf = await new GLTFLoader().loadAsync("models/soldier.glb");
+  // simple graphics start with the simple soldier (15 k triangles, 4 MB instead of 19 MB); scene1.js swaps the mesh
+  // when the quality changes
+  const gltf = await new GLTFLoader().loadAsync(QUALITY === "hi" ? "models/soldier.glb" : "models/soldier_lo.glb");
   const clips = Object.fromEntries(gltf.animations.map(c => [c.name, c]));
   gltf.scene.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; o.frustumCulled = false; } });
   const fpv = meta.positions.firing_point, side = new THREE.Vector2(-FIRE.y, FIRE.x);
@@ -596,6 +638,8 @@ document.getElementById("playDemo1").onclick = () => playDemo1();
 if (new URLSearchParams(location.search).get("scene") === "demo1") playDemo1();
 
 const info = document.getElementById("info"), clock = new THREE.Clock(), cam2 = new THREE.Vector2();
+const fpsEl = document.getElementById("fps"); let fpsN = 0, fpsT0 = performance.now();
+applyQuality(QUALITY);
 renderer.setAnimationLoop(() => {
   const rawDt = clock.getDelta(), dt = Math.min(rawDt, 0.1), sdt = Math.min(rawDt, 1.0);   // sdt: real time for the scripted scene
   timeU.value += dt;
@@ -629,7 +673,8 @@ renderer.setAnimationLoop(() => {
     if (keys.KeyQ) camera.position.y -= v;
     camera.position.y = Math.max(camera.position.y, hAt(camera.position.x, camera.position.z) + 0.3);
   }
-  if (grassCenter.distanceTo(cam2.set(camera.position.x, camera.position.z)) > 25) placeGrass(camera.position.x, camera.position.z);
+  if (grass.visible && grassCenter.distanceTo(cam2.set(camera.position.x, camera.position.z)) > 25) placeGrass(camera.position.x, camera.position.z);
+  fpsN++; { const now = performance.now(); if (now - fpsT0 >= 500) { fpsEl.textContent = `${Math.round(fpsN * 1000 / (now - fpsT0))} fps`; fpsN = 0; fpsT0 = now; } }
   // the shadow map follows the camera in whole shadow texels (in the light's frame), so shadow edges do not crawl
   // and flicker while the camera moves
   { const L = (sunDir.y > 0 ? sunDir : new THREE.Vector3(0.3, 0.6, 0.4)).clone().normalize(), cam = sun.shadow.camera;

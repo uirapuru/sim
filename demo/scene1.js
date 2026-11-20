@@ -36,7 +36,7 @@ export async function play(ctx) {
     fetch("demo/audio/scene1/manifest.json?v=" + Date.now()).then(r => r.json()), fetch("demo/ballistics_scene1.json?v=" + Date.now()).then(r => r.json()),
     loader.loadAsync("models/grot.glb?v=" + Date.now()), loader.loadAsync("models/spotter60_stand.glb?v=" + Date.now()),
     loader.loadAsync("models/kestrel5700.glb?v=" + Date.now()), loader.loadAsync("models/gloves.glb?v=" + Date.now()),
-    loader.loadAsync("models/instructor.glb?v=" + Date.now()), loader.loadAsync("models/soldier_anims.glb?v=" + Date.now())]);
+    loader.loadAsync((window.__quality && window.__quality.mode === "hi" ? "models/instructor.glb" : "models/instructor_lo.glb") + "?v=" + Date.now()), loader.loadAsync("models/soldier_anims.glb?v=" + Date.now())]);
 
   // ---------- range geometry ----------
   const fwd = V(FIRE.x, 0, FIRE.y).normalize(), left = V(fwd.z, 0, -fwd.x), up = V(0, 1, 0);
@@ -139,6 +139,10 @@ export async function play(ctx) {
 
   // ---------- rifle ----------
   const rifle = rifleG.scene; scene.add(rifle);
+  // the eyepiece glass came with transmission, and one transmissive material makes three.js draw the whole scene a
+  // second time every frame (author, 20 XI: performance); plain see-through glass looks the same at this size
+  rifle.traverse(o => { if (!o.isMesh) return; for (const m of Array.isArray(o.material) ? o.material : [o.material])
+    if (m.transmission > 0) { m.transmission = 0; m.transparent = true; m.opacity = 0.45; m.depthWrite = false; m.needsUpdate = true; } });
   // daylight scattered into the open action: the black-anodized inside of the receiver reads as metal, not as a cover
   // over the port, when the bolt is back (author, 18 XI); switched off with the bolt closed
   rifle.traverse(o => { if (o.isMesh && o.material && o.material.name === "bolt_steel") { o.material = o.material.clone(); o.material.color.set(window.__boltCol ?? 0x9a9da0); o.material.metalness = 0.75; o.material.roughness = 0.38; } });   // bead-blasted steel bolt carrier: seen through the port
@@ -945,7 +949,28 @@ export async function play(ctx) {
   window.__renderOverride = () => { updateLabel(); pulseHighlight();               // __dbgCam: test hook, a fixed camera for close-up checks
     const dc = window.__dbgCam; if (dc) { camera.position.copy(dc.p); camera.lookAt(dc.t); camera.fov = dc.fov || 40; camera.updateProjectionMatrix(); }
     const hide = dc && dc.noBody ? [] : null; if (hide) man.m.traverse(o => { if (o.isSkinnedMesh && o.visible) { o.visible = false; hide.push(o); } });
-    composer.render(); if (hide) hide.forEach(o => o.visible = true); kesInset.render(ctx.renderer); };
+    // simple graphics (index.html, window.__quality): straight to the screen, no depth-of-field passes
+    if (window.__quality && window.__quality.mode === "lo") ctx.renderer.render(scene, camera); else composer.render();
+    if (hide) hide.forEach(o => o.visible = true); kesInset.render(ctx.renderer); };
+  if (window.__quality) window.__quality.listeners.push(() => { composer.setPixelRatio(ctx.renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight); });
+  // characters for the graphics quality (author, 20 XI): models/*_lo.glb are the same rigs with a decimated mesh and
+  // small textures (tools/character/make_lo.py). The other mesh is loaded when first needed, its skin indices mapped
+  // to this skeleton by bone name, and the collision samplers built again for the new body
+  const bodyFiles = { man: { hi: "models/soldier.glb", lo: "models/soldier_lo.glb" }, inst: { hi: "models/instructor.glb", lo: "models/instructor_lo.glb" } };
+  const bodyCache = new Map(), bodyNow = { man: null, inst: null };
+  const skinnedOf = root => { let s = null; root.traverse(o => { if (o.isSkinnedMesh && !s && !/flag/.test(o.name)) s = o; }); return s; };
+  async function setBody(who, sol, q) {
+    if (bodyNow[who] === q) return; const url = bodyFiles[who][q];
+    if (!bodyCache.has(url)) bodyCache.set(url, loader.loadAsync(url + ver));
+    const src = skinnedOf((await bodyCache.get(url)).scene), dst = skinnedOf(sol.m); if (!src || !dst) return;
+    const byName = new Map(dst.skeleton.bones.map((b, i) => [b.name, i])), map = src.skeleton.bones.map(b => byName.get(b.name) ?? 0);
+    const geo = src.geometry.clone(), si = geo.attributes.skinIndex;
+    for (let i = 0; i < si.count; i++) for (let k = 0; k < 4; k++) si.setComponent(i, k, map[si.getComponent(i, k)]);
+    dst.geometry = geo; dst.material = src.material; bodyNow[who] = q;
+    COL[who] = makeSoldierSolver(THREE, COL, sol, who === "man" ? handsMan : handsInst);
+  }
+  bodyNow.man = bodyNow.inst = window.__quality ? window.__quality.mode : "hi";
+  if (window.__quality) window.__quality.listeners.push(q => { setBody("man", man, q); setBody("inst", inst, q); });
   const canvas = ctx.renderer.domElement;
   let scopeOv = null, lastMag = -1;
   const grass = scene.children.find(o => o.isInstancedMesh && o.count > 1000);
@@ -1249,7 +1274,7 @@ export async function play(ctx) {
     capF.visible = capR.visible = c.kind !== "scope";               // the flip-up lids sit in front of the objective
     for (const h of Object.values(handsMan.hands)) h.g.visible = c.kind !== "scope";   // hands at the turrets would sit in front of the eye
     kestrel.visible = kestrel.visible && c.kind !== "scope"; notebook.visible = notebook.visible && c.kind !== "scope";
-    if (grass) grass.visible = c.kind !== "scope";                    // prone eye is 0.37 m up, inside the grass tufts
+    if (grass) grass.visible = c.kind !== "scope" && !(window.__quality && window.__quality.mode === "lo");   // prone eye is 0.37 m up, inside the grass tufts; no tufts in simple graphics
     if (c.kind === "scope") { setFocus(null); return scopeCamera(S.scope, T, recoil); }
     camera.fov = c.fov || 45;
     if (c.kind === "follow") {
