@@ -13,13 +13,16 @@
   #quality { position: fixed; left: 12px; top: 12px; z-index: 140; display: flex; gap: 6px; align-items: center; font: 13px system-ui, sans-serif; }
   #quality button { background: rgba(12,14,16,.8); color: #eee; border: 1px solid #555; border-radius: 5px; padding: 5px 10px; font: inherit; cursor: pointer; }
   #quality button.hi { background: #f2c94c; color: #111; border-color: #f2c94c; font-weight: 600; }
+  #quality #offline { background: rgba(12,14,16,.7); color: #cfd8c8; border-radius: 5px; padding: 5px 8px; font: 12px system-ui; }
+  #quality #offline.ok { color: #9fe39f; }
   #quality #fps { background: rgba(12,14,16,.7); color: #9fe39f; border-radius: 5px; padding: 5px 8px; font: 12px monospace; min-width: 52px; text-align: center; }
   #load { position: fixed; inset: 0; display: grid; place-items: center; color: #fff; background: #222; font-size: 18px; }
 </style>
+<script src="version.js"></script>
 <script type="importmap">
 { "imports": {
-  "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
-  "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+  "three": "./vendor/three/three.module.js",
+  "three/addons/": "./vendor/three/examples/jsm/"
 } }
 </script>
 </head>
@@ -40,7 +43,7 @@
   Wiatr: <input id="wind" type="range" min="0" max="12" step="0.5" value="4" style="width:120px;vertical-align:middle"> <span id="windv">4 m/s</span>
 </div>
 <div id="info"></div>
-<div id="quality"><button id="qualityBtn" title="Przełącz jakość grafiki">Grafika: prosta</button><span id="fps">– fps</span></div>
+<div id="quality"><button id="qualityBtn" title="Przełącz jakość grafiki">Grafika: prosta</button><span id="fps">– fps</span><span id="offline" style="display:none"></span></div>
 <script type="module">
 import * as THREE from "three";
 import { Sky } from "three/addons/objects/Sky.js";
@@ -49,10 +52,10 @@ import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
 
 const T = "terrain/";
 const LITE = new URLSearchParams(location.search).has("lite");   // headless checks: less grass, small shadows
-const meta = await (await fetch(T + "meta.json")).json();
+const meta = await (await fetch(T + "meta.json?v=" + window.SIM_V)).json();
 const [GW, GH] = meta.grid, CELL = meta.cell_m, NEAR = meta.near;
-const heights = new Uint16Array(await (await fetch(T + "height_2m.u16")).arrayBuffer());
-const nearH = new Uint16Array(await (await fetch(T + "height_near_1m.u16")).arrayBuffer());
+const heights = new Uint16Array(await (await fetch(T + "height_2m.u16?v=" + window.SIM_V)).arrayBuffer());
+const nearH = new Uint16Array(await (await fetch(T + "height_near_1m.u16?v=" + window.SIM_V)).arrayBuffer());
 function sample(arr, w, h, cell, x, z) {
   const gx = Math.min(Math.max(x / cell - 0.5, 0), w - 1.001), gz = Math.min(Math.max(z / cell - 0.5, 0), h - 1.001);
   const x0 = Math.floor(gx), z0 = Math.floor(gz), fx = gx - x0, fz = gz - z0, i = z0 * w + x0;
@@ -205,16 +208,16 @@ function gridTiles(arr, w, h, cell, x0, z0, step) {
 }
 const terrainGeo = { lo: null, hi: null };   // built when first needed: a phone never builds the 4 million triangles
 const terrainFor = q => terrainGeo[q] ??= { far: gridTiles(heights, GW, GH, CELL, 0, 0, q === "hi" ? 1 : 4), near: gridTiles(nearH, NEAR.grid, NEAR.grid, 1, NEAR.x0, NEAR.z0, q === "hi" ? 1 : 2) };
-const farMat = terrainMaterial(await tex(T + "orto.jpg"));
+const farMat = terrainMaterial(await tex(T + "orto.jpg?v=" + window.SIM_V));
 farMat.polygonOffset = true; farMat.polygonOffsetFactor = 6; farMat.polygonOffsetUnits = 6;
-const nearMat = terrainMaterial(await tex(T + "orto_near.jpg"));
+const nearMat = terrainMaterial(await tex(T + "orto_near.jpg?v=" + window.SIM_V));
 const tileGroup = (geos, mat) => { const g = new THREE.Group(); for (const geo of geos) { const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; g.add(m); } return g; };
 const far = tileGroup(terrainFor(QUALITY).far, farMat), near = tileGroup(terrainFor(QUALITY).near, nearMat);
 far.position.y = -0.25;
 scene.add(far, near);
 
 // orthophoto pixels for colour sampling (grass)
-const nearImg = await new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = T + "orto_near.jpg"; });
+const nearImg = await new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = T + "orto_near.jpg?v=" + window.SIM_V; });
 const oc = document.createElement("canvas"); oc.width = 800; oc.height = 800;
 const og = oc.getContext("2d", { willReadFrequently: true }); og.drawImage(nearImg, 0, 0, 800, 800);
 const opx = og.getImageData(0, 0, 800, 800).data;
@@ -285,7 +288,7 @@ function placeGrass(cx, cz) {
 }
 
 // ---------- trees: pines from canopy height ----------
-const tr = new Float32Array(await (await fetch(T + "trees.f32")).arrayBuffer());
+const tr = new Float32Array(await (await fetch(T + "trees.f32?v=" + window.SIM_V)).arrayBuffer());
 const nTrees = tr.length / 4;
 const needleTex = new THREE.CanvasTexture(noiseCanvas(256, (g, s) => {
   g.fillStyle = "#777"; g.fillRect(0, 0, s, s);
@@ -343,6 +346,16 @@ function applyQuality(q) {
   const b = document.getElementById("qualityBtn"); b.textContent = hi ? "Grafika: pełna" : "Grafika: prosta"; b.classList.toggle("hi", hi);
 }
 window.__quality = { mode: QUALITY, listeners: [], set: q => { localStorage.setItem("simQuality", q); applyQuality(q); window.__redraw && window.__redraw.kick(1500); } };
+// offline (author, 20 XI): sw.js stores the release in the browser on the first visit; afterwards the simulator opens
+// and runs without the internet. Not on a local server (dev), unless the address has ?sw
+if ("serviceWorker" in navigator && (window.SIM_RELEASE !== "dev" || QS.has("sw"))) {
+  const badge = document.getElementById("offline"); badge.style.display = "inline-block"; badge.textContent = "offline: …";
+  navigator.serviceWorker.addEventListener("message", e => { const m = e.data || {};
+    if (m.type === "sw-progress") { badge.classList.remove("ok"); badge.textContent = `offline: ${Math.floor(m.done / Math.max(1, m.total) * 100)}%`; }
+    if (m.type === "sw-ready") { badge.classList.add("ok"); badge.textContent = "działa offline"; badge.title = "Wydanie " + m.release + " zapisane w przeglądarce"; } });
+  navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready).then(r => r.active && r.active.postMessage({ type: "sw-status" }))
+    .catch(err => { badge.textContent = "offline: niedostępne"; console.warn("service worker", err); });
+}
 document.getElementById("qualityBtn").onclick = () => window.__quality.set(QUALITY === "hi" ? "lo" : "hi");
 
 // ---------- buildings ----------
@@ -528,7 +541,7 @@ const mixers = [];
 {
   // simple graphics start with the simple soldier (15 k triangles, 4 MB instead of 19 MB); scene1.js swaps the mesh
   // when the quality changes
-  const gltf = await new GLTFLoader().loadAsync(QUALITY === "hi" ? "models/soldier.glb" : "models/soldier_lo.glb");
+  const gltf = await new GLTFLoader().loadAsync((QUALITY === "hi" ? "models/soldier.glb" : "models/soldier_lo.glb") + "?v=" + window.SIM_V);
   const clips = Object.fromEntries(gltf.animations.map(c => [c.name, c]));
   gltf.scene.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; o.frustumCulled = false; } });
   const fpv = meta.positions.firing_point, side = new THREE.Vector2(-FIRE.y, FIRE.x);
@@ -651,12 +664,12 @@ if (new URLSearchParams(location.search).get("scene") === "demo1") {
   window.__sim.look(ex, hAt(ex, ez) + 1.7, ez, sx, sy, sz);
 }
 document.getElementById("load").remove();
-document.getElementById("playScene").onclick = async () => { const m = await import("./sequence.js?" + Date.now()); m.play(window.__ctx).catch(e => { console.error("scene error", e); window.__seqErr = String(e.stack || e); }); };
-const playSling = async (opts = {}) => { const m = await import("./sling_walk.js?" + Date.now()); return m.play(window.__ctx, opts).catch(e => { console.error("sling scene error", e); window.__seqErr = String(e.stack || e); }); };
+document.getElementById("playScene").onclick = async () => { const m = await import("./sequence.js?v=" + window.SIM_V); m.play(window.__ctx).catch(e => { console.error("scene error", e); window.__seqErr = String(e.stack || e); }); };
+const playSling = async (opts = {}) => { const m = await import("./sling_walk.js?v=" + window.SIM_V); return m.play(window.__ctx, opts).catch(e => { console.error("sling scene error", e); window.__seqErr = String(e.stack || e); }); };
 document.getElementById("playSling").onclick = () => playSling();
 window.__playSling = playSling;
 if (new URLSearchParams(location.search).get("scene") === "sling") playSling();
-const playDemo1 = async () => { const m = await import("./demo/scene1.js?" + Date.now()); return m.play(window.__ctx).catch(e => { console.error("demo scene error", e); window.__seqErr = String(e.stack || e); }); };
+const playDemo1 = async () => { const m = await import("./demo/scene1.js?v=" + window.SIM_V); return m.play(window.__ctx).catch(e => { console.error("demo scene error", e); window.__seqErr = String(e.stack || e); }); };
 document.getElementById("playDemo1").onclick = () => playDemo1();
 if (new URLSearchParams(location.search).get("scene") === "demo1") playDemo1();
 

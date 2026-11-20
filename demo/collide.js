@@ -9,7 +9,7 @@
 // Distances to a rigid part: the closest point on a BVH of its mesh (three-mesh-bvh), looked for only within ~1 cm;
 // inside or outside by ray parity (the meshes are not all closed), cached on small grids in the part's frame.
 // Measured on the whole scene 1 (18 XI): no penetration left in any sampled frame, ~17 ms per frame (median).
-import { MeshBVH } from "https://unpkg.com/three-mesh-bvh@0.8.3/build/index.module.js";
+import { MeshBVH } from "../vendor/three-mesh-bvh/index.module.js";   // kept locally: works offline (vendor/README.md)
 
 export function makeCollision(THREE, { hAt, margin = 0.0015 } = {}) {
   const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);

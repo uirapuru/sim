@@ -33,10 +33,10 @@ export async function play(ctx) {
   for (const id of ["hud", "info"]) { const e = document.getElementById(id); if (e) e.style.display = "none"; }
 
   const [manifest, BAL, rifleG, spotG, kesG, gloveG, instG, animG] = await Promise.all([
-    fetch("demo/audio/scene1/manifest.json?v=" + Date.now()).then(r => r.json()), fetch("demo/ballistics_scene1.json?v=" + Date.now()).then(r => r.json()),
-    loader.loadAsync("models/grot.glb?v=" + Date.now()), loader.loadAsync("models/spotter60_stand.glb?v=" + Date.now()),
-    loader.loadAsync("models/kestrel5700.glb?v=" + Date.now()), loader.loadAsync("models/gloves.glb?v=" + Date.now()),
-    loader.loadAsync((window.__quality && window.__quality.mode === "hi" ? "models/instructor.glb" : "models/instructor_lo.glb") + "?v=" + Date.now()), loader.loadAsync("models/soldier_anims.glb?v=" + Date.now())]);
+    fetch("demo/audio/scene1/manifest.json?v=" + window.SIM_V).then(r => r.json()), fetch("demo/ballistics_scene1.json?v=" + window.SIM_V).then(r => r.json()),
+    loader.loadAsync("models/grot.glb?v=" + window.SIM_V), loader.loadAsync("models/spotter60_stand.glb?v=" + window.SIM_V),
+    loader.loadAsync("models/kestrel5700.glb?v=" + window.SIM_V), loader.loadAsync("models/gloves.glb?v=" + window.SIM_V),
+    loader.loadAsync((window.__quality && window.__quality.mode === "hi" ? "models/instructor.glb" : "models/instructor_lo.glb") + "?v=" + window.SIM_V), loader.loadAsync("models/soldier_anims.glb?v=" + window.SIM_V)]);
 
   // ---------- range geometry ----------
   const fwd = V(FIRE.x, 0, FIRE.y).normalize(), left = V(fwd.z, 0, -fwd.x), up = V(0, 1, 0);
@@ -777,7 +777,7 @@ export async function play(ctx) {
   // shots fired in earlier beats stay in the state (the beats above only add their own); collect all fired shots up to T
   const SHOT_BEATS = beats.filter(b => /s15\.flight|s16\.repeat/.test(b.say));
 
-  const tl = new Timeline({ beats, manifest, audioDir: "demo/audio/scene1", audioQuery: "?v=" + Date.now(), init, sceneTitles: SCENES });
+  const tl = new Timeline({ beats, manifest, audioDir: "demo/audio/scene1", audioQuery: "?v=" + window.SIM_V, init, sceneTitles: SCENES });
   tl.beforeBeat = S => { S.dirLine = false; S.man.kneelHinge = false; S.ov = {}; S.cam = null; S.scope = null; S.man.look = null; S.man.trigger = false; S.man.thumbK = 0; S.rifle.selK = undefined; S.man.curl = { R: 0.8, L: 0.3 }; S.props.kestrel = null; S.props.notebook = null; S.cycleT = null; S.man.lean = 0; S.inst.lean = 0; };   // hand-held props and the slow replay belong to their beat
   // absolute shot times (needed by beats after the shots: marks, swing, bolt)
   const SHOTS = [{ n: 0, t0: SHOT_BEATS[0].start + 0.25, slow: SLOW }, { n: 1, t0: SHOT_BEATS[1].start + 3.0 }, { n: 2, t0: SHOT_BEATS[1].start + 10.5 }];
@@ -966,7 +966,7 @@ export async function play(ctx) {
   const panel = makePanel(tl, { title: TITLE, lesson: "Strzelanie z SpKW/Z", onTask: k => runTask(k), onToggleLabels: on => { labelsOn = on; if (!on) { tip.style.display = "none"; ctx.renderer.domElement.style.cursor = ""; } }, onCamMode: m => { freeCam = m === "free"; fpp = m === "fpp"; controls.enabled = freeCam; if (freeCam) { controls.target.copy(man.m.position).add(V(0, 0.6, 0)); } } });
   let labelsOn = false, freeCam = false, fpp = false;
   // labels (author, 18 XI): with "Etykiety" on, hovering any part of the rifle shows its name (white on black)
-  const PARTS = await fetch("models/grot_parts.json?v=" + Date.now()).then(r => r.json()).then(j => Object.fromEntries(j.parts.map(p => [p.id, p]))).catch(() => ({}));
+  const PARTS = await fetch("models/grot_parts.json?v=" + window.SIM_V).then(r => r.json()).then(j => Object.fromEntries(j.parts.map(p => [p.id, p]))).catch(() => ({}));
   PARTS.suppressor = { pl: "Tłumik dźwięku", en: "Suppressor" };
   const EXTRA = { kestrel5700x: "Kestrel 5700 Elite – miernik wiatru i warunków", gong: "Gong 0,5 × 1,0 m (sylwetka)", bag: "Worek strzelecki pod kolbę",
     ammo_pouch: "Ładownica", scope_cap_front: "Zakrywka obiektywu", scope_cap_rear: "Zakrywka okularu", ear_defenders: "Ochronniki słuchu", instructor: "Instruktor", magazine_hand: "Magazynek" };
