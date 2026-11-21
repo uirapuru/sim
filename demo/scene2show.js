@@ -18,6 +18,7 @@ export async function startShow({ tl, panel, demo }) {
   card.style.cssText = "position:fixed;right:12px;top:56px;z-index:112;background:#f4f1e8;color:#1d2a40;border-radius:6px;padding:8px 12px;font:13px/1.5 system-ui;box-shadow:0 6px 24px rgba(0,0,0,.5);display:none";
   const skip = document.createElement("button"); skip.textContent = "Zakończ lekcję";
   skip.style.cssText = "position:fixed;right:16px;bottom:150px;z-index:119;background:rgba(12,14,16,.85);color:#eee;border:1px solid #555;border-radius:5px;padding:6px 12px;font:14px system-ui;cursor:pointer";
+  sub.className = "simSub"; box.className = "simNote"; skip.className = "simSkip";
   document.body.append(sub, box, card, skip);
   let stopped = false, src = null; skip.onclick = () => { stopped = true; if (src) try { src.stop(); } catch (e) { } };
   const bufs = {};

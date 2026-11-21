@@ -168,6 +168,19 @@ const CSS = `
 #startVeil .t { color: #fff; font: 600 18px system-ui; text-align: center; margin-bottom: 18px; text-shadow: 0 2px 6px #000; }
 #demoSub.instr { color: #ffd84d; font-weight: 700; }
 #demoSub:empty { display: none; }
+/* small screens (phones): the toolbar hides under a tab at the bottom edge, the subtitles go small and low (author, 21 XI) */
+#panelTab { display: none; }
+@media (max-width: 900px), (max-height: 520px) {
+  #demoPanel { transform: translateY(100%); transition: transform .2s; padding: 6px 8px 8px; font-size: 12px; }
+  #demoPanel.open { transform: none; }
+  #panelTab { display: block; position: fixed; left: 50%; bottom: var(--simPanelH, 0px); transform: translateX(-50%); z-index: 81; width: 64px; height: 20px;
+    padding: 0; border: 1px solid #555; border-bottom: 0; border-radius: 8px 8px 0 0; background: rgba(12,14,16,.85); color: #f2c94c; font: 12px/1 system-ui; cursor: pointer;
+    transition: bottom .2s; }
+  #demoSub, .simSub { bottom: calc(var(--simPanelH, 0px) + 22px) !important; font: 12px/1.3 system-ui, sans-serif !important; padding: 3px 10px !important;
+    max-width: 92vw !important; background: rgba(0,0,0,.55) !important; border-radius: 4px !important; transition: bottom .2s; }
+  .simSkip { bottom: auto !important; top: 56px !important; right: 8px !important; font-size: 12px !important; padding: 4px 8px !important; }
+  .simNote { top: 52px !important; font-size: 12px !important; padding: 4px 10px !important; max-width: 70vw; }
+}
 `;
 
 export function makePanel(tl, { onToggleLabels, onCamMode, title, lesson = title, onTask }) {
@@ -225,6 +238,15 @@ export function makePanel(tl, { onToggleLabels, onCamMode, title, lesson = title
   side.append(list, foot);
   document.body.append(side, tog);
   p.append(row1, row2);
+  // the tab under the bottom edge (small screens only, see the CSS): shows and hides the toolbar
+  const small = matchMedia("(max-width: 900px), (max-height: 520px)");
+  const tab = document.createElement("button"); tab.id = "panelTab"; tab.title = "Pasek sterowania"; document.body.append(tab);
+  const setOpen = on => { p.classList.toggle("open", on); tab.textContent = on ? "▼" : "▲";
+    document.documentElement.style.setProperty("--simPanelH", on && small.matches ? p.offsetHeight + "px" : "0px"); dispatchEvent(new Event("simpanel")); };
+  tab.onclick = () => setOpen(!p.classList.contains("open"));
+  const onSmall = () => { setOpen(false); if (small.matches && side.classList.contains("open")) tog.click(); };   // the side panel would cover a phone
+  small.addEventListener("change", onSmall); onSmall();
+  addEventListener("resize", () => { if (p.classList.contains("open")) setOpen(true); });
   function go(d) {
     const i = tl.scenes.indexOf(tl.sceneAt(tl.T)), n = tl.scenes[Math.max(0, Math.min(tl.scenes.length - 1, i + d))];
     tl.seek(tl.sceneStarts[n] + 0.001);

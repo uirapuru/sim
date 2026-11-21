@@ -317,32 +317,50 @@ export async function play(ctx) {
     const fan = model.getObjectByName("kestrel5700x_fan");
     const box = new THREE.Box3().setFromObject(model), ctr = box.getCenter(V()), size = box.getSize(V());
     // the top of the device: the vane with its open cover and the display (the keypad below stays out of the frame);
-    // 30 % larger than first built, so the display reads (author, 18 XI)
-    const W = 286, H = 325, cam = new THREE.PerspectiveCamera(24, W / H, 0.01, 10), th = Math.tan(12 * Math.PI / 180);
-    const y0 = box.min.y + size.y * 0.36, look = V(ctr.x, (y0 + box.max.y) / 2, ctr.z), hh = box.max.y - y0;
-    const dist = Math.max(hh / 2 / th, size.x / 2 / (th * W / H)) * 1.06 + size.z / 2;
-    cam.position.copy(look).add(V(0, 0.08, 1).normalize().multiplyScalar(dist)); cam.lookAt(look);
+    // 30 % larger than first built, so the display reads (author, 18 XI). Small screens (phones, author 21 XI): only the
+    // vane and the display, smaller, pressed to the edge of the screen
+    const small = matchMedia("(max-width: 900px), (max-height: 520px)");
+    const cam = new THREE.PerspectiveCamera(24, 1, 0.01, 10), th = Math.tan(12 * Math.PI / 180);
+    let W = 286, H = 325;
+    let tightBox = null; { const lcd = []; model.updateMatrixWorld(true); model.traverse(o => { if (o.isMesh && o.material.name === "kestrel5700x_lcd") lcd.push(o); });
+      if (fan && lcd.length) { tightBox = new THREE.Box3().setFromObject(fan); lcd.forEach(o => tightBox.union(new THREE.Box3().setFromObject(o))); } }
+    const frame = () => {
+      if (small.matches && tightBox) {   // the vane and the display only: their own box, no cover, no keypad
+        const tc = tightBox.getCenter(V()), ts = tightBox.getSize(V());
+        H = Math.round(Math.max(150, Math.min(220, innerHeight * 0.66))); W = Math.round(H * Math.min(1, (ts.x * 1.14) / (ts.y * 1.12)));
+        cam.aspect = W / H; cam.updateProjectionMatrix();
+        const dist = Math.max(ts.y * 1.12 / 2 / th, ts.x * 1.14 / 2 / (th * W / H)) + ts.z / 2;
+        cam.position.copy(tc).add(V(0, 0.08, 1).normalize().multiplyScalar(dist)); cam.lookAt(tc); }
+      else { const y0 = box.min.y + size.y * 0.36, look = V(ctr.x, (y0 + box.max.y) / 2, ctr.z), hh = box.max.y - y0; W = 286; H = 325;
+        cam.aspect = W / H; cam.updateProjectionMatrix();
+        const dist = Math.max(hh / 2 / th, size.x / 2 / (th * W / H)) * 1.06 + size.z / 2;
+        cam.position.copy(look).add(V(0, 0.08, 1).normalize().multiplyScalar(dist)); cam.lookAt(look); }
+      handle.style.width = Math.round(W * (small.matches ? 1 : 0.6)) + "px"; handle.style.height = H + "px"; };
     let cond = null, t0 = performance.now();
     // place on the screen (CSS px from the left and from the bottom): dragged with the mouse by a handle over it, or
     // put on the right when the trainee has to read it (author, 20 XI); kept inside the window
-    const pos = { L: 14, B: 112 };
+    // on a narrow (portrait) phone the subtitles span the width: the device sits above them
+    const home = () => small.matches ? { L: 0, B: (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--simPanelH")) || 0) + (innerWidth < 600 ? 84 : 0) } : { L: 14, B: 112 };
+    const pos = home();
     const clampPos = () => { pos.L = Math.max(0, Math.min(innerWidth - W, pos.L)); pos.B = Math.max(0, Math.min(innerHeight - H, pos.B)); };
     const handle = document.createElement("div"); handle.title = "Kestrel – przeciągnij myszą";
-    handle.style.cssText = `position:fixed;width:${Math.round(W * 0.6)}px;height:${H}px;z-index:110;cursor:grab;touch-action:none;display:none`; document.body.append(handle);
-    const placeHandle = () => { clampPos(); Object.assign(handle.style, { left: pos.L + W * 0.2 + "px", bottom: pos.B + "px" }); };   // over the device only, the scene beside it stays clickable
+    handle.style.cssText = `position:fixed;z-index:110;cursor:grab;touch-action:none;display:none`; document.body.append(handle);
+    const placeHandle = () => { clampPos(); Object.assign(handle.style, { left: pos.L + (small.matches ? 0 : W * 0.2) + "px", bottom: pos.B + "px" }); };   // over the device only, the scene beside it stays clickable
+    frame();
     let drag = null;
     handle.addEventListener("pointerdown", e => { if (e.button !== 0) return; drag = { x: e.clientX, y: e.clientY, L: pos.L, B: pos.B }; handle.setPointerCapture(e.pointerId); handle.style.cursor = "grabbing"; e.preventDefault(); e.stopPropagation(); });
     handle.addEventListener("pointermove", e => { if (!drag) return; pos.L = drag.L + e.clientX - drag.x; pos.B = drag.B - (e.clientY - drag.y); placeHandle(); });
     const endDrag = () => { drag = null; handle.style.cursor = "grab"; }; handle.addEventListener("pointerup", endDrag); handle.addEventListener("pointercancel", endDrag);
-    addEventListener("resize", placeHandle);
+    addEventListener("simpanel", () => { if (small.matches) { pos.B = home().B; placeHandle(); if (window.__redraw) window.__redraw.kick(400); } });   // the toolbar slid in or out
+    addEventListener("resize", () => { const wasRight = pos.L + W >= innerWidth - 30; frame(); if (small.matches) { const h_ = home(); pos.B = h_.B; if (!wasRight) pos.L = 0; } placeHandle(); });
     // four lines in the part of the texture the screen shows (the top ~70 %)
     const draw = c_ => { x.fillStyle = "#b9c3a8"; x.fillRect(0, 0, 360, 230); x.fillStyle = "#1b241b"; x.font = "bold 31px monospace";
       const f1_ = v => v.toFixed(1).replace(".", ",");
       [`TEMP ${f1_(c_.temp ?? 15).padStart(5)} C`, `BARO ${String(c_.pressure ?? 1010).padStart(5)}`, `WIND ${f1_(c_.wind).padStart(5)}`, `DIR  ${c_.windFrom}:00`]
         .forEach((l, i) => x.fillText(l, 14, 31 + i * 34)); tex.needsUpdate = true; };
     return {
-      set(c_) { cond = c_; if (c_) draw(c_); handle.style.display = c_ ? "block" : "none"; if (!c_) { pos.L = 14; pos.B = 112; } placeHandle(); },
-      side(s_) { pos.L = s_ === "right" ? innerWidth - W - 24 : 14; pos.B = 112; placeHandle(); },
+      set(c_) { cond = c_; if (c_) draw(c_); handle.style.display = c_ ? "block" : "none"; if (!c_) Object.assign(pos, home()); placeHandle(); },
+      side(s_) { const h_ = home(), edge = small.matches ? 0 : 24; pos.L = s_ === "right" ? innerWidth - W - edge : h_.L; pos.B = h_.B; placeHandle(); },
       render(r) { if (!cond || camKindNow === "gong" || camKindNow === "gongClose") return;   // no Kestrel in the views from the gong (author, 20 XI)
         const now = performance.now(); if (fan) fan.rotation.x += (now - t0) / 1000 * cond.wind * 5; t0 = now;
         const L = pos.L, B = pos.B, cc = r.getClearColor(new THREE.Color()), ca = r.getClearAlpha(), ac = r.autoClear;

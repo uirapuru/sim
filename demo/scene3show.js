@@ -16,6 +16,7 @@ export async function startShow({ tl, panel, demo }) {
   box.style.cssText = "position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:118;background:rgba(10,12,14,.82);color:#f2c94c;padding:8px 16px;border-radius:8px;font:600 17px system-ui;display:none";
   const skip = document.createElement("button"); skip.textContent = "Zakończ pokaz";
   skip.style.cssText = "position:fixed;right:16px;bottom:150px;z-index:119;background:rgba(12,14,16,.85);color:#eee;border:1px solid #555;border-radius:5px;padding:6px 12px;font:14px system-ui;cursor:pointer";
+  sub.className = "simSub"; box.className = "simNote"; skip.className = "simSkip";
   document.body.append(sub, box, skip);
   let stopped = false, src = null; skip.onclick = () => { stopped = true; if (src) try { src.stop(); } catch (e) { } };
   const bufs = {};
