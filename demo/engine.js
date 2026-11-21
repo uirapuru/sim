@@ -309,7 +309,7 @@ export function sounds() {
 export function startGate(title, onStart, onTask) {
   const v = document.createElement("div"); v.id = "startVeil";
   v.innerHTML = `<div><div class="t">${title}</div><div style="text-align:center"><button class="go">▶ Rozpocznij</button></div>` +
-    (onTask ? `<div class="tasks"><button data-k="train" title="Samodzielne wykonanie kolejnych czynności">Trening</button><button data-k="exam" title="Na czas, bez podpowiedzi">Egzamin</button></div>` : "") + `</div>`;
+    (onTask ? `<div class="tasks"><button data-k="train" title="Samodzielne wykonanie kolejnych czynności">Trening</button><button data-k="exam" title="Na czas, bez podpowiedzi">Egzamin</button><button data-k="show3" title="Scenariusz 3: para w lesie, cel na trybunie – pokaz z lektorem">Para strzelec–obserwator</button></div>` : "") + `</div>`;
   v.querySelector("button.go").onclick = () => { v.remove(); onStart(); };
   v.querySelectorAll(".tasks button").forEach(b => b.onclick = () => { v.remove(); onTask(b.dataset.k); });
   document.body.append(v); return v;

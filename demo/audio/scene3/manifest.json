@@ -1,0 +1,140 @@
+{
+ "n1": {
+  "file": "n1.mp3",
+  "who": "narrator",
+  "duration": 8.96,
+  "text": "Scena trzecia: para strzelec i obserwator. Instruktor przechadza się po pomoście trybuny i co chwilę przystaje w jej narożniku."
+ },
+ "n2": {
+  "file": "n2.mp3",
+  "who": "narrator",
+  "duration": 9.28,
+  "text": "Para leży w lesie po lewej stronie strzelnicy, kilkanaście metrów w głębi drzew. Obserwator ma lunetę obserwacyjną, strzelec karabin wyborowy."
+ },
+ "n3": {
+  "file": "n3.mp3",
+  "who": "narrator",
+  "duration": 13.28,
+  "text": "Obserwator czeka, aż instruktor stanie, i mierzy go w siatce. 1,80 m wzrostu, w siatce 3,0 mil: 1,8 × 1000 / 3,0 = 600 m."
+ },
+ "n4": {
+  "file": "n4.mp3",
+  "who": "narrator",
+  "duration": 6.96,
+  "text": "Z Kestrela czyta wiatr i warunki, z tabel liczy nastawy. Potem prowadzi ogień klasycznym dialogiem."
+ },
+ "d1": {
+  "file": "d1.mp3",
+  "who": "spotter",
+  "duration": 3.52,
+  "text": "Cel — człowiek na trybunie, w narożniku pomostu."
+ },
+ "d2": {
+  "file": "d2.mp3",
+  "who": "shooter",
+  "duration": 0.8,
+  "text": "Cel."
+ },
+ "d3": {
+  "file": "d3.mp3",
+  "who": "spotter",
+  "duration": 2.0,
+  "text": "Odległość — 600."
+ },
+ "d4": {
+  "file": "d4.mp3",
+  "who": "shooter",
+  "duration": 0.96,
+  "text": "600."
+ },
+ "d5": {
+  "file": "d5.mp3",
+  "who": "spotter",
+  "duration": 1.92,
+  "text": "Podniesienie — 6,0."
+ },
+ "d6": {
+  "file": "d6.mp3",
+  "who": "shooter",
+  "duration": 0.8,
+  "text": "6,0."
+ },
+ "d7": {
+  "file": "d7.mp3",
+  "who": "spotter",
+  "duration": 2.24,
+  "text": "Wiatr — 0,8 w lewo."
+ },
+ "d8": {
+  "file": "d8.mp3",
+  "who": "shooter",
+  "duration": 1.6,
+  "text": "0,8 w lewo."
+ },
+ "d9": {
+  "file": "d9.mp3",
+  "who": "shooter",
+  "duration": 1.44,
+  "text": "Strzelec gotowy."
+ },
+ "d10": {
+  "file": "d10.mp3",
+  "who": "spotter",
+  "duration": 1.6,
+  "text": "Obserwator gotowy."
+ },
+ "d11": {
+  "file": "d11.mp3",
+  "who": "spotter",
+  "duration": 1.04,
+  "text": "Uwaga…"
+ },
+ "d12": {
+  "file": "d12.mp3",
+  "who": "spotter",
+  "duration": 0.88,
+  "text": "Ognia."
+ },
+ "d13": {
+  "file": "d13.mp3",
+  "who": "spotter",
+  "duration": 2.4,
+  "text": "Pudło. W lewo 0,5."
+ },
+ "d14": {
+  "file": "d14.mp3",
+  "who": "shooter",
+  "duration": 1.92,
+  "text": "W lewo 0,5."
+ },
+ "n5": {
+  "file": "n5.mp3",
+  "who": "narrator",
+  "duration": 9.68,
+  "text": "Wiatr był silniejszy, niż ocenił obserwator, i pocisk przeszedł po prawej. Obserwator podaje poprawkę, strzelec ją powtarza i ustawia na bębnie."
+ },
+ "d15": {
+  "file": "d15.mp3",
+  "who": "spotter",
+  "duration": 0.88,
+  "text": "Ognia."
+ },
+ "d16": {
+  "file": "d16.mp3",
+  "who": "spotter",
+  "duration": 0.88,
+  "text": "Trafienie."
+ },
+ "n6": {
+  "file": "n6.mp3",
+  "who": "narrator",
+  "duration": 4.96,
+  "text": "Drugi strzał trafia. Obserwator ocenia trafienie i para kończy zadanie."
+ },
+ "t_ready": {
+  "file": "t_ready.mp3",
+  "who": "shooter",
+  "duration": 1.44,
+  "text": "Strzelec gotowy."
+ }
+}
