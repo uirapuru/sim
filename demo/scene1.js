@@ -1266,7 +1266,7 @@ export async function play(ctx) {
           <div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 50%, transparent ${R - 4}px, rgba(0,0,0,.92) ${R + 1}px, #000 ${R + 3}px)"></div>
           <svg width="${hw}" height="${H}" style="position:absolute;inset:0">${spot ? reticleSpotter(cx, cy, R, k) : reticlePM(cx, cy, R, k)}</svg>
           <div style="position:absolute;top:${Math.min(H - 44, cy + R + 6)}px;width:100%;text-align:center;font:600 15px system-ui;color:#f2c94c">${who === "shooter" ? "Strzelec" : "Obserwator"}
-            <span style="color:#aaa;font:12px monospace;font-weight:400"> · ${spot ? "Hensoldt Spotter 60 · 20×" : "S&amp;B PM II 3-12×50 · 12×"}</span></div></div>`; }).join("")
+            <span style="color:#aaa;font:12px monospace;font-weight:400"> · ${spot ? "Hensoldt Spotter 60 · 20× · FFP" : "S&amp;B PM II 3-12×50 · 12× · FFP"}</span></div></div>`; }).join("")
         + `<div style="position:absolute;left:${hw - 1}px;top:0;width:2px;height:${H}px;background:#333"></div>`; }
     const vis = obsScope.visible; obsScope.visible = false;
     r.setScissorTest(true);
@@ -1686,6 +1686,7 @@ export async function play(ctx) {
       s += `<circle cx="${cx + d}" cy="${cy}" r="${Math.max(1.2, 0.1 * k)}" fill="#0b0b0b"/><circle cx="${cx}" cy="${cy + d}" r="${Math.max(1.2, 0.1 * k)}" fill="#0b0b0b"/>`; }
     for (const [x1, y1, x2, y2] of [[cx - R, cy, cx - 10 * k, cy], [cx + 10 * k, cy, cx + R, cy], [cx, cy + 10 * k, cx, cy + R]]) s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#0b0b0b" stroke-width="${Math.max(3, 0.4 * k)}"/>`;
     return s; };
+  // the Spotter 60, first focal plane like the PM II: drawn in mils, it scales with the magnification (author, 21 XI)
   // the Spotter 60 (its manual, fig. 3; author 21 XI): a small centre cross and an L of two 10-mil scales, 5 mil left
   // and 5 mil below the centre, mil-dots every mil (0.2 mil across), a 2-mil cross line in the middle of each scale
   const reticleSpotter = (cx, cy, R, k) => {
@@ -1706,7 +1707,7 @@ export async function play(ctx) {
       lastMag = key;
       const W_ = innerWidth, H = innerHeight, cx = W_ / 2, cy = H / 2, R = g_.Rpx, k = g_.pxPerMrad;
       const s = spot ? reticleSpotter(cx, cy, R, k) : reticlePM(cx, cy, R, k);
-      const label = spot ? `Hensoldt Spotter 60 · ${mag.toFixed(0)}× · siatka obserwacyjna (mil)` : `S&amp;B PM II 3-12×50 · ${mag.toFixed(1).replace(".", ",")}× · siatka mil-dot (FFP)`;
+      const label = spot ? `Hensoldt Spotter 60 · ${mag.toFixed(0)}× · siatka mil (FFP)` : `S&amp;B PM II 3-12×50 · ${mag.toFixed(1).replace(".", ",")}× · siatka mil-dot (FFP)`;
 
       scopeOv.innerHTML = `<div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 50%, transparent ${R - 4}px, rgba(0,0,0,.92) ${R + 1}px, #000 ${R + 3}px)"></div>
         <svg width="${W_}" height="${H}" style="position:absolute;inset:0">${s}</svg><svg class="measure" width="${W_}" height="${H}" style="position:absolute;inset:0"></svg>
