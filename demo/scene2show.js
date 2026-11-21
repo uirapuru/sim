@@ -7,7 +7,7 @@ const BASE = { wind: 3, windFrom: 9, hour: 11, weather: "clear", temp: 15, press
 const TARGETS = [{ range: 400, clock: 12, bearing: 2 }, { range: 560, clock: 1, bearing: 28 }, { range: 760, clock: 11, bearing: -29 }];
 const f1 = v => (Math.round(v * 10) / 10).toFixed(1).replace(".", ",");
 
-export async function startShow({ tl, panel, demo }) {
+export async function startShow({ tl, panel, demo, ready = () => {} }) {
   const ac = tl.ac, AUDIO = "demo/audio/scene2/";
   const man = await fetch(AUDIO + "manifest.json" + V_).then(r => r.json());
   const sub = document.createElement("div");
@@ -42,7 +42,7 @@ export async function startShow({ tl, panel, demo }) {
     // 1. the three gongs from behind the shooter
     tl.holdAt("s11.dir", 0.3);
     { const THREE = window.__ctx.THREE, fp = demo.fp, ax = demo.GC.clone().sub(fp).setY(0).normalize(); demo.setCam({ p: fp.clone().addScaledVector(ax, -6).add(new THREE.Vector3(0, 3.2, 0)), t: fp.clone().addScaledVector(ax, 120), fov: 50 }); }
-    await say("n1");
+    await new Promise(r => setTimeout(r, 300)); ready(); await say("n1");
     // 2. finding them all, at the lowest power
     demo.setCam(null);
     for (let t = 0; t < 3 && !stopped; t++) { await demo.activateTarget(t, cFor(t)); tl.holdAt("s08.found", 0.15); note(`Cel nr ${t + 1}`); if (t === 0) await say("n2"); else await wait(2200); }

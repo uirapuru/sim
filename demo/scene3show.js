@@ -7,7 +7,7 @@ const { VIEW_CONDITIONS } = await import("./training/conditions.js" + V_);
 const COND = { wind: 3, windFrom: 9, hour: 11, weather: "clear", temp: 15, pressure: 1010 };
 const WHO = { narrator: "", spotter: "Obserwator", shooter: "Strzelec" };
 
-export async function startShow({ tl, panel, demo }) {
+export async function startShow({ tl, panel, demo, ready = () => {} }) {
   const ac = tl.ac, AUDIO = "demo/audio/scene3/";
   const man = await fetch(AUDIO + "manifest.json" + V_).then(r => r.json());
   const sub = document.createElement("div");
@@ -42,7 +42,7 @@ export async function startShow({ tl, panel, demo }) {
     const pairCam = { p: fp.clone().add({ x: side.x * 3.2 - dirOut.x * 2.2, y: 1.4, z: side.z * 3.2 - dirOut.z * 2.2 }), t: fp.clone().add({ x: side.x * 0.6, y: 0.25, z: side.z * 0.6 }), fov: 48 };
     const behindCam = { p: fp.clone().add({ x: -dirOut.x * 4.5 + side.x * 0.6, y: 1.5, z: -dirOut.z * 4.5 + side.z * 0.6 }), t: fp.clone().addScaledVector(dirOut, 30).setY(fp.y + 1.0), fov: 55 };
     tl.holdAt("s14.cmd", 0.5);
-    demo.setCam(deckCam); await say("n1");
+    demo.setCam(deckCam); await new Promise(r => setTimeout(r, 300)); ready(); await say("n1");
     demo.setCam(behindCam); await say("n2");
     // the forest as seen from the stand: the pair stays hidden (author, 21 XI)
     { const toP = fp.clone().sub(s3.B).setY(0).normalize(); demo.setCam({ p: s3.B.clone().addScaledVector(toP, 0.7).setY(s3.deckY + 1.7), t: fp.clone().setY(fp.y + 0.4), fov: 6 }); await say("n2b"); }

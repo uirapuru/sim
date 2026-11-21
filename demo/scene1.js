@@ -1702,10 +1702,18 @@ export async function play(ctx) {
   async function runTask(mode, opts) {
     if (taskOn) return; taskOn = true; snd.unlock(); tl.ac.resume(); document.getElementById("startVeil")?.remove();
     document.getElementById("lessonSide")?.classList.remove("open"); const tg = document.getElementById("sideToggle"); if (tg) tg.textContent = "☰";
-    try { if (mode === "show3" || mode === "show2") { const { startShow } = await import(`./scene${mode[4]}show.js` + ver); await startShow({ tl, panel, demo: window.__demo }); return; }   // lessons of scenarios 2 and 3
+    let veil = null;
+    try { if (mode === "show3" || mode === "show2") {   // lessons of scenarios 2 and 3
+        // a dark cover with the lesson's name until its first shot is set: no frame of lesson 1 in between (author, 21 XI)
+        const name = mode === "show3" ? "Lekcja 3: para strzelec–obserwator" : "Lekcja 2: trzy cele";
+        veil = document.createElement("div"); veil.style.cssText = "position:fixed;inset:0;z-index:117;background:#0d0f11;display:grid;place-items:center;color:#f2c94c;font:600 20px system-ui;text-align:center;padding:20px";
+        veil.innerHTML = `${name}<div style="color:#aaa;font:14px system-ui;margin-top:8px">Wczytywanie…</div>`; document.body.append(veil);
+        panel.setOverride(name);
+        const ready = () => { if (veil) { veil.remove(); veil = null; } };
+        const { startShow } = await import(`./scene${mode[4]}show.js` + ver); await startShow({ tl, panel, demo: window.__demo, ready }); return; }
       const [{ startTask }, tab] = await Promise.all([import("./training/runner.js" + ver), fetch("demo/ballistics_table.json" + ver).then(r => r.json())]);
       await startTask(mode, { tl, panel, demo: window.__demo, tab, canvas: ctx.renderer.domElement, chapterTitles: SCENES }, opts); }
-    catch (e) { console.error("task", e); } finally { taskOn = false; if (window.showWelcome && document.documentElement.classList.contains("app")) window.showWelcome(); } }   // back to the menu   // sound needs a click first: the scene starts on it
+    catch (e) { console.error("task", e); } finally { if (veil) veil.remove(); panel.setOverride(null); taskOn = false; if (window.showWelcome && document.documentElement.classList.contains("app")) window.showWelcome(); } }   // back to the menu   // sound needs a click first: the scene starts on it
   window.__demo = { COL, runTask: (...a) => runTask(...a), tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt,
     setConditions, sightBlocked, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; },
     setWithdraw, get targetDown() { return !!deckFall; }, setCam: c => { window.__dbgCam = c; if (window.__redraw) window.__redraw.kick(800); }, setSite, deckWalk: t => deckWalk(t ?? deckT), get site3() { return SITE3; }, setTargets, activateTarget, setCardTargets: list => { CARD_PREV = list || []; }, setRounds: n => { NR = n; }, aimNudge, setAimHold: on => { holding = !!on; }, breathChart: on => { chartOn = !!on; drawChart(); }, fireLive, getDial: () => ({ elev: ELEV, wind: WIND }), setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };

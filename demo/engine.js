@@ -202,7 +202,7 @@ export function makePanel(tl, { onToggleLabels, onCamMode, title, lesson = title
   slider.oninput = () => { dragging = true; tl.seek(+slider.value); };
   slider.onchange = () => { dragging = false; };
   const time = document.createElement("span"); time.className = "time";
-  let labels = false, subs = true, free = false, locked = false;
+  let labels = false, subs = true, free = false, locked = false, override = null;
   const labB = btn("Etykiety", "Podpisy przy częściach wyposażenia", () => { labels = !labels; labB.classList.toggle("on", labels); onToggleLabels(labels); });
   const subB = btn("Napisy", "Tekst lektora na ekranie", () => { subs = !subs; subB.classList.toggle("on", subs); });
   subB.classList.add("on");
@@ -263,7 +263,7 @@ export function makePanel(tl, { onToggleLabels, onCamMode, title, lesson = title
   return {
     update() {
       const n = tl.sceneAt(tl.T), b = tl.beatAt(tl.T);
-      ttl.textContent = `${title} · scena ${n}/${tl.scenes.length}: ${tl.sceneTitles[n] || ""}`;
+      ttl.textContent = override ?? `${title} · scena ${n}/${tl.scenes.length}: ${tl.sceneTitles[n] || ""}`;
       scnBtns.forEach((x, i) => x.classList.toggle("on", tl.scenes[i] === n));
       chBtns.forEach((x, i) => x.classList.toggle("on", tl.scenes[i] === n));
       playB.textContent = tl.playing ? "⏸" : "▶";
@@ -275,6 +275,8 @@ export function makePanel(tl, { onToggleLabels, onCamMode, title, lesson = title
     },
     get labels() { return labels; }, get free() { return free; },
     setSubs(on) { subs = on; subB.classList.toggle("on", subs); },
+    // lessons 2 and 3 borrow this timeline's frames: their own title, and no chapter bar of lesson 1 (author, 21 XI)
+    setOverride(t) { override = t || null; for (const x of [start, prev, next, playB, slider, time, ...scnBtns]) x.style.display = override ? "none" : ""; if (side.classList.contains("open") && override) tog.click(); },
     setLabels(on) { if (labels !== on) labB.click(); labB.disabled = false; },
     lockLabels(on) { labB.disabled = on; },
     // during a task the chapter bar, the slider and play are locked: the task drives the timeline
