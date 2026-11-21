@@ -25,7 +25,10 @@
   #welcome button { flex: 1; background: rgba(242,201,76,.12); color: #f2c94c; border: 1px solid #f2c94c; border-radius: 6px; padding: 9px 6px; font: 600 15px system-ui; cursor: pointer; }
   #welcome button:hover:not(:disabled) { background: #f2c94c; color: #111; }
   #welcome button:disabled { opacity: .35; cursor: default; }
-  #welcome button.picked { background: #f2c94c; color: #111; }
+  #wWait { position: fixed; inset: 0; z-index: 401; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    background: linear-gradient(180deg, rgba(8,10,12,.72) 0%, rgba(8,10,12,.35) 40%, rgba(8,10,12,.82) 100%), url(welcome.jpg) center / cover no-repeat #1b1f23;
+    color: #f2c94c; font: 600 24px system-ui, sans-serif; text-align: center; padding: 20px; text-shadow: 0 2px 8px #000; }
+  #wWait .p { color: #cfd3d6; font: 15px system-ui, sans-serif; }
   #welcome .wLoad { font: 13px system-ui; color: #cfd3d6; min-height: 1.2em; }
   #quality { z-index: 410 !important; }
   #menuBtn { display: none; } .app #menuBtn.on { display: inline-block; }
@@ -85,14 +88,22 @@
 // A plain script, not the module: the module waits for the terrain first, and a tap made meanwhile was lost (author, 21 XI:
 // lesson 3 chosen while loading, lesson 1 seen)
 { const W = document.getElementById("welcome"), menu = document.getElementById("menuBtn");
-  let pickedText = "";
-  window.showWelcome = () => { W.classList.remove("hidden"); menu.classList.remove("on"); W.querySelectorAll("button.picked").forEach(x => x.classList.remove("picked")); };
-  window.__welcomeProgress = f => { const e = document.getElementById("wLoad"); if (e) e.textContent = f >= 1 ? "" : `Wczytywanie symulatora… ${Math.round(f * 100)}%${pickedText}`; };
+  // a choice made while loading: the welcome screen gives way to a card "Ładuję lekcję nr 3…" with the progress
+  // (author, 21 XI); scene1.js takes it down when the chosen task starts
+  let wait = null, pct = "";
+  const NAME = { lesson: "lekcję", train: "trening", exam: "egzamin" };
+  window.__welcomeWaitDone = () => { if (wait) { wait.remove(); wait = null; } };
+  window.showWelcome = () => { window.__welcomeWaitDone(); W.classList.remove("hidden"); menu.classList.remove("on"); };
+  window.__welcomeProgress = f => { pct = f >= 1 ? "" : `${Math.round(f * 100)}%`;
+    const e = document.getElementById("wLoad"); if (e) e.textContent = f >= 1 ? "" : `Wczytywanie symulatora… ${pct}`;
+    if (wait) wait.querySelector(".p").textContent = pct ? `Wczytywanie symulatora… ${pct}` : "Uruchamiam…"; };
   W.querySelectorAll("button[data-m]").forEach(b => b.onclick = () => { const a = [b.dataset.m, +b.dataset.s];
-    if (window.__welcomeAct) { W.classList.add("hidden"); menu.classList.add("on"); window.__welcomeAct(...a); }
-    else { window.__welcomePending = a; W.querySelectorAll("button[data-m]").forEach(x => x.classList.toggle("picked", x === b));
-      pickedText = ` · po wczytaniu ruszy: ${b.textContent.toLowerCase()}, scenariusz ${a[1]}`; document.getElementById("wLoad").textContent = "Wczytywanie symulatora…" + pickedText; } });
-  menu.onclick = () => { if (window.__welcomeStop) window.__welcomeStop(); window.showWelcome(); }; }
+    W.classList.add("hidden"); menu.classList.add("on");
+    if (window.__welcomeAct) { window.__welcomeAct(...a); return; }
+    window.__welcomePending = a;
+    if (!wait) { wait = document.createElement("div"); wait.id = "wWait"; document.body.append(wait); }
+    wait.innerHTML = `<div>Ładuję ${NAME[a[0]] || "lekcję"} nr ${a[1]}…</div><div class="p">Wczytywanie symulatora…${pct ? " " + pct : ""}</div>`; });
+  menu.onclick = () => { window.__welcomePending = null; if (window.__welcomeStop) window.__welcomeStop(); window.showWelcome(); }; }
 </script>
 <script type="module">
 import * as THREE from "three";

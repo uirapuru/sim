@@ -1802,7 +1802,7 @@ export async function play(ctx) {
     if (mode === "lesson") { if (scenario === 3 || scenario === 2) runTask("show" + scenario); else { tl.seek(0); tl.play(); } return; }
     runTask(mode, { scenario }); };
   window.__welcomeStop = () => { if (taskOn) location.reload(); else tl.pause(); };   // back to the menu: a running task is left by a reload
-  if (window.__welcomePending) { const a = window.__welcomePending; window.__welcomePending = null; document.getElementById("welcome")?.classList.add("hidden"); document.getElementById("menuBtn")?.classList.add("on"); window.__welcomeAct(...a); }
+  if (window.__welcomePending) { const a = window.__welcomePending; window.__welcomePending = null; document.getElementById("welcome")?.classList.add("hidden"); document.getElementById("menuBtn")?.classList.add("on"); window.__welcomeAct(...a); window.__welcomeWaitDone && window.__welcomeWaitDone(); }
   if (!document.documentElement.classList.contains("app")) startGate(TITLE, () => { snd.unlock(); tl.seek(0); tl.play(); }, k => runTask(k));
   // training / exam (panel "Zadania"): runner.js drives the timeline; one at a time
   async function runTask(mode, opts) {
