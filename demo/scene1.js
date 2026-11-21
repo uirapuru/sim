@@ -1786,6 +1786,9 @@ export async function play(ctx) {
   // the welcome screen (index.html, author 21 XI) instead of the start gate: lesson / training / exam of a scenario;
   // a choice made while the scene was loading starts now
   window.__welcomeProgress && window.__welcomeProgress(1);
+  // declared before the welcome screen's hooks: a choice made while loading starts a task at once (author, 21 XI:
+  // lesson 3 picked during the load used to hit this before its declaration and lesson 1 ran instead)
+  let taskOn = false;
   window.__welcomeAct = (mode, scenario) => { snd.unlock(); tl.ac.resume();
     if (mode === "lesson") { if (scenario === 3 || scenario === 2) runTask("show" + scenario); else { tl.seek(0); tl.play(); } return; }
     runTask(mode, { scenario }); };
@@ -1793,7 +1796,6 @@ export async function play(ctx) {
   if (window.__welcomePending) { const a = window.__welcomePending; window.__welcomePending = null; document.getElementById("welcome")?.classList.add("hidden"); document.getElementById("menuBtn")?.classList.add("on"); window.__welcomeAct(...a); }
   if (!document.documentElement.classList.contains("app")) startGate(TITLE, () => { snd.unlock(); tl.seek(0); tl.play(); }, k => runTask(k));
   // training / exam (panel "Zadania"): runner.js drives the timeline; one at a time
-  let taskOn = false;
   async function runTask(mode, opts) {
     if (taskOn) return; taskOn = true; snd.unlock(); tl.ac.resume(); document.getElementById("startVeil")?.remove();
     document.getElementById("lessonSide")?.classList.remove("open"); const tg = document.getElementById("sideToggle"); if (tg) tg.textContent = "☰";

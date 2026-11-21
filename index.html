@@ -25,6 +25,7 @@
   #welcome button { flex: 1; background: rgba(242,201,76,.12); color: #f2c94c; border: 1px solid #f2c94c; border-radius: 6px; padding: 9px 6px; font: 600 15px system-ui; cursor: pointer; }
   #welcome button:hover:not(:disabled) { background: #f2c94c; color: #111; }
   #welcome button:disabled { opacity: .35; cursor: default; }
+  #welcome button.picked { background: #f2c94c; color: #111; }
   #welcome .wLoad { font: 13px system-ui; color: #cfd3d6; min-height: 1.2em; }
   #quality { z-index: 410 !important; }
   #menuBtn { display: none; } .app #menuBtn.on { display: inline-block; }
@@ -79,6 +80,20 @@
   <div class="wLoad" id="wLoad">Wczytywanie symulatora…</div>
 </div>
 <div id="quality"><button id="menuBtn" title="Wybór scenariusza i trybu">Menu</button><button id="qualityBtn" title="Przełącz jakość grafiki">Grafika: prosta</button><span id="fps">– fps</span><span id="offline" style="display:none"></span></div>
+<script>
+// the welcome screen: a choice before the scene is ready is kept and started once it is (scene1.js sets __welcomeAct).
+// A plain script, not the module: the module waits for the terrain first, and a tap made meanwhile was lost (author, 21 XI:
+// lesson 3 chosen while loading, lesson 1 seen)
+{ const W = document.getElementById("welcome"), menu = document.getElementById("menuBtn");
+  let pickedText = "";
+  window.showWelcome = () => { W.classList.remove("hidden"); menu.classList.remove("on"); W.querySelectorAll("button.picked").forEach(x => x.classList.remove("picked")); };
+  window.__welcomeProgress = f => { const e = document.getElementById("wLoad"); if (e) e.textContent = f >= 1 ? "" : `Wczytywanie symulatora… ${Math.round(f * 100)}%${pickedText}`; };
+  W.querySelectorAll("button[data-m]").forEach(b => b.onclick = () => { const a = [b.dataset.m, +b.dataset.s];
+    if (window.__welcomeAct) { W.classList.add("hidden"); menu.classList.add("on"); window.__welcomeAct(...a); }
+    else { window.__welcomePending = a; W.querySelectorAll("button[data-m]").forEach(x => x.classList.toggle("picked", x === b));
+      pickedText = ` · po wczytaniu ruszy: ${b.textContent.toLowerCase()}, scenariusz ${a[1]}`; document.getElementById("wLoad").textContent = "Wczytywanie symulatora…" + pickedText; } });
+  menu.onclick = () => { if (window.__welcomeStop) window.__welcomeStop(); window.showWelcome(); }; }
+</script>
 <script type="module">
 import * as THREE from "three";
 import { Sky } from "three/addons/objects/Sky.js";
@@ -391,14 +406,6 @@ if ("serviceWorker" in navigator && (window.SIM_RELEASE !== "dev" || QS.has("sw"
   navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready).then(r => r.active && r.active.postMessage({ type: "sw-status" }))
     .catch(err => { badge.textContent = "offline: niedostępne"; console.warn("service worker", err); });
 }
-// the welcome screen: a choice before the scene is ready is kept and started once it is (scene1.js sets __welcomeAct)
-{ const W = document.getElementById("welcome"), menu = document.getElementById("menuBtn");
-  window.showWelcome = () => { W.classList.remove("hidden"); menu.classList.remove("on"); };
-  window.__welcomeProgress = f => { const e = document.getElementById("wLoad"); if (e) e.textContent = f >= 1 ? "" : `Wczytywanie symulatora… ${Math.round(f * 100)}%`; };
-  W.querySelectorAll("button[data-m]").forEach(b => b.onclick = () => { const a = [b.dataset.m, +b.dataset.s];
-    if (window.__welcomeAct) { W.classList.add("hidden"); menu.classList.add("on"); window.__welcomeAct(...a); }
-    else { window.__welcomePending = a; document.getElementById("wLoad").textContent = "Wczytywanie symulatora… scena ruszy, gdy będzie gotowa."; } });
-  menu.onclick = () => { if (window.__welcomeStop) window.__welcomeStop(); window.showWelcome(); }; }
 document.getElementById("qualityBtn").onclick = () => window.__quality.set(QUALITY === "hi" ? "lo" : "hi");
 
 // ---------- buildings ----------
