@@ -139,8 +139,9 @@ export const STEPS = [
 // when both shots hit, then the trainee goes on to the next one either way. In phases (author, 20 XI, later):
 // find all three, measure each (from its height only), judge the directions, put all three on the range card (only
 // the direction is graded there), then the shooting, target by target, with the range card in the corner
-export const SCENARIOS = [{ n: 1, title: "Jeden cel, trzy strzały" }, { n: 2, title: "Trzy cele, po dwa trafienia" }];
+export const SCENARIOS = [{ n: 1, title: "Jeden cel, trzy strzały" }, { n: 2, title: "Trzy cele, po dwa trafienia" }, { n: 3, title: "Para strzelec–obserwator, cel na trybunie" }];
 export function scenarioSteps(n) {
+  if (n === 3) return scenario3Steps();
   if (n !== 2) return STEPS;
   const by = id => STEPS.find(s => s.id === id), first = STEPS.findIndex(s => s.id === "scan"), after = STEPS.findIndex(s => s.id === "safe");
   const T = [0, 1, 2], nr = t => t + 1;
@@ -173,6 +174,42 @@ export function scenarioSteps(n) {
       stop: { hits: 2, misses: 2 }, last: t === 2, play: t === 2 ? ["s16.group", "s16.empty"] : ["s16.group"] }));
   }
   return out.concat(STEPS.slice(after));
+}
+
+// scenario 3 (author, 21 XI; docs/superpowers/specs/2026-11-21-scenario3-sniper-team-design.md): the pair in the forest,
+// the instructor on the stand's deck (1.80 m); the trainee is the spotter (finds, measures, reads the wind, works out
+// the settings, leads the classic dialogue, judges the shot) and the shooter (fires on "Ognia." when the instructor
+// stands). Frames: the scope (s08/s09/s15) and the view from behind the pair (s06.cheek)
+export const DIALOG3 = c => [   // the spotter's calls in order; c.call = the settings the trainee worked out
+  "Cel — człowiek na trybunie, w narożniku pomostu.",
+  `Odległość — ${c.ownRange ?? c.range}.`,
+  `Podniesienie — ${fmt(c.call ? c.call.elev : 0)}.`,
+  `Wiatr — ${fmt(Math.abs(c.call ? c.call.wind : 0))} ${c.call && c.call.wind < 0 ? "w prawo" : "w lewo"}.`,
+  "Obserwator gotowy.",
+];
+const fmt = v => (Math.round(v * 10) / 10).toFixed(1).replace(".", ",");
+function scenario3Steps() {
+  const by = id => STEPS.find(s => s.id === id);
+  return [
+    { ...by("scan"), id: "s3_find", baseId: "scan", voice: "s3_find", play: ["s09.why"], ask: "Jesteś obserwatorem. Znajdź w lunecie instruktora na trybunie i najedź na niego krzyżem.",
+      hint: "Trybuna jest daleko, za przecinką w lesie. Instruktor chodzi po pomoście i staje w jego narożniku." },
+    { ...by("height"), id: "s3_height", baseId: "height", voice: "s3_height", answer: c => 1800 / c.range, tol: 0.2, play: ["s09.height"],
+      ask: "Poczekaj, aż instruktor stanie, i odczytaj w siatce jego wysokość.", hint: "Instruktor ma 1,80 m. Postaw kreskę na czubku głowy i policz punkty do stóp." },
+    { ...by("range"), id: "s3_range", baseId: "range", voice: "s3_range", hold: { key: "s06.cheek", u: 0.5 }, play: ["s06.cheek"],
+      ask: "Oblicz odległość do instruktora.", hint: "Odległość [m] = 1,8 × 1000 / odczyt [mil]." },
+    { ...by("wind"), id: "s3_wind", baseId: "wind", voice: "s3_wind", play: ["s10.reading"] },
+    { ...by("dial"), id: "s3_dial", baseId: "dial", voice: "s3_dial", hold: { key: "s06.cheek", u: 0.5 }, play: ["s06.cheek"], call: true,
+      ask: "Wylicz z tabel nastawy dla strzelca: podniesienie i poprawkę boczną." },
+    { id: "s3_dialog", chapter: 13, kind: "sequence", voice: "s3_dialog", hold: { key: "s06.cheek", u: 0.5 }, play: ["s06.cheek"], lines: DIALOG3,
+      ask: "Poprowadź dialog: wybieraj kolejne komendy obserwatora. Strzelec odpowiada.",
+      hint: "Kolejność: cel, odległość, podniesienie, wiatr, a po „Strzelec gotowy” – „Obserwator gotowy”." },
+    { ...by("shot"), id: "s3_shot", baseId: "shot", voice: "s3_shot", shots: [0, 1], stop: { hits: 1, misses: 2 }, whenStopped: true, play: ["s16.group"],
+      ask: "Jesteś strzelcem. Strzelasz na komendę „Ognia.”, gdy instruktor stoi.",
+      hint: "Gdy instruktor idzie, czekaj. Po „Ognia.” strzelaj w pauzie po wydechu. Po pudle obserwator podaje poprawkę: popraw nastawy." },
+    { id: "s3_judge", chapter: 16, kind: "choice", voice: "s3_judge", hold: { key: "s06.cheek", u: 0.5 }, play: ["s06.cheek"],
+      options: ["Trafienie.", "Pudło."], correct: c => c.lastHit ? "Trafienie." : "Pudło.",
+      ask: "Jesteś znów obserwatorem. Oceń ostatni strzał.", hint: "W lunecie obserwacyjnej widać, czy pocisk doszedł do celu. Gdy instruktor przerwał chodzenie po strzale – trafienie." },
+  ];
 }
 
 export const ACTION_POOL = [...new Set(STEPS.filter(s => s.kind === "action").map(s => s.action))];

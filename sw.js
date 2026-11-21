@@ -4,7 +4,7 @@
 // that did not change since the last release (same hash) is copied from the old store instead of downloaded again.
 // Requests are answered from the store first; anything missing comes from the network and is stored.
 // A new release takes over when all the simulator's tabs have been closed, so a running session never mixes versions.
-const RELEASE = "5aa4ad7";
+const RELEASE = "992f7fb";
 const STORE = "sim-" + RELEASE, META = "__files.json";
 const LATER = [/models\/soldier\.glb$/, /models\/instructor\.glb$/];   // full graphics only: stored on first use
 const base = self.registration.scope;

@@ -404,6 +404,62 @@
    "duration": 5.52
   }
  ],
+ "s3_find": [
+  {
+   "file": "s3_find.0.mp3",
+   "speaker": "narrator",
+   "duration": 5.84
+  }
+ ],
+ "s3_height": [
+  {
+   "file": "s3_height.0.mp3",
+   "speaker": "narrator",
+   "duration": 4.56
+  }
+ ],
+ "s3_range": [
+  {
+   "file": "s3_range.0.mp3",
+   "speaker": "narrator",
+   "duration": 2.32
+  }
+ ],
+ "s3_wind": [
+  {
+   "file": "s3_wind.0.mp3",
+   "speaker": "narrator",
+   "duration": 4.08
+  }
+ ],
+ "s3_dial": [
+  {
+   "file": "s3_dial.0.mp3",
+   "speaker": "narrator",
+   "duration": 4.96
+  }
+ ],
+ "s3_dialog": [
+  {
+   "file": "s3_dialog.0.mp3",
+   "speaker": "narrator",
+   "duration": 5.6
+  }
+ ],
+ "s3_shot": [
+  {
+   "file": "s3_shot.0.mp3",
+   "speaker": "narrator",
+   "duration": 4.72
+  }
+ ],
+ "s3_judge": [
+  {
+   "file": "s3_judge.0.mp3",
+   "speaker": "narrator",
+   "duration": 3.6
+  }
+ ],
  "_next": [
   {
    "file": "_next.0.mp3",
