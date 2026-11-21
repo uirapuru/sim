@@ -740,7 +740,9 @@ export async function play(ctx) {
   let SITE = 1;
   const FP0 = fp.clone(), FWD0 = fwd0.clone();
   const SITE3 = (() => {
-    const st = (meta.buildings_osm || []).find(b => b.deck - b.ground > 1.5), pair = V(335.0, 0, 1281.5);
+    // the pair 15-20 m inside the trees and ~25 m of forest away from the dirt road that runs by the forest's edge (author,
+    // 21 XI: the first place lay 3 m from the road, on the edge, exposed)
+    const st = (meta.buildings_osm || []).find(b => b.deck - b.ground > 1.5), pair = V(348.0, 0, 1268.0);
     const P = st.poly.map(([x, z]) => V(x, 0, z)), C = P.reduce((a, p) => a.add(p), V()).multiplyScalar(1 / P.length);
     // the longest edge that faces the forest (its outward normal towards the pair)
     let best = null; for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length], m = a.clone().add(b).multiplyScalar(0.5);
@@ -765,17 +767,41 @@ export async function play(ctx) {
     return { at, yaw, stop, walk: d, clips: stop || turn ? [["Idle", t % 8, 1]] : [["Walking", (d / 1.35) % 1.0, 1]] };
   }
   let deckT = 0, observer = null, obsScope = null;
+  // bushes around the pair: low leafy clumps 0.7-1.4 m high in a ring 1.8-6 m out, none in a 10-degree slit in front
+  // (the muzzle and the spotting scope look through it); the same random draw every time
+  let bushGroup = null;
+  function bushes(on) {
+    if (bushGroup) { scene.remove(bushGroup); bushGroup = null; } if (!on) return;
+    bushGroup = new THREE.Group(); let r_ = 11; const rnd = () => (r_ = (r_ * 16807) % 2147483647) / 2147483647;
+    const geo = new THREE.IcosahedronGeometry(1, 1); { const p = geo.attributes.position; for (let i = 0; i < p.count; i++) { const n = 0.8 + 0.3 * Math.sin(p.getX(i) * 7 + p.getZ(i) * 5) * Math.cos(p.getY(i) * 6); p.setXYZ(i, p.getX(i) * n, (p.getY(i) * 0.5 + 0.5) * n, p.getZ(i) * n); } geo.computeVertexNormals(); }
+    const mat = new THREE.MeshLambertMaterial({ color: 0x3f5a2c }), mat2 = new THREE.MeshLambertMaterial({ color: 0x4d6233 });
+    const mid = PRONE.clone().addScaledVector(left, 0.55);                     // between the shooter and the observer
+    const scopeEye = RL(EYE), obsEye = obsScope ? obsScope.position.clone() : scopeEye.clone().addScaledVector(left, 1.1);
+    const sightLines = [[scopeEye, SITE3.aim.clone()], [obsEye, SITE3.aim.clone()]];
+    for (let k = 0; k < 46; k++) {
+      const ang = rnd() * Math.PI * 2, d = 1.8 + rnd() * 4.2, front = Math.cos(ang), side = Math.sin(ang);
+      const dir = fwd.clone().multiplyScalar(front).addScaledVector(left, side);
+      const p = mid.clone().addScaledVector(dir, d), hgt = 0.7 + rnd() * 0.7, rad = 0.5 + rnd() * 0.6;
+      // the slit: no bush within reach of the shooter's or the observer's line of sight
+      if (sightLines.some(([a, b]) => { const ab = b.clone().sub(a).setY(0), t = Math.max(0, p.clone().sub(a).setY(0).dot(ab) / ab.lengthSq());
+        return p.distanceTo(a.clone().lerp(b, t).setY(p.y)) < rad * 1.3 + 0.35; })) continue;
+      const b = new THREE.Mesh(geo, rnd() < 0.5 ? mat : mat2); b.position.set(p.x, hAt(p.x, p.z) - 0.05, p.z); b.scale.set(rad, hgt, rad * (0.8 + rnd() * 0.4)); b.rotation.y = rnd() * 6.28;
+      b.castShadow = b.receiveShadow = true; bushGroup.add(b); }
+    scene.add(bushGroup);
+  }
   async function setSite(n, c) {
     SITE = n;
     if (n === 3) {
       fp.copy(g(SITE3.pair.clone())); fwd0.copy(SITE3.mid.clone().sub(fp).setY(0).normalize()); left0.set(fwd0.z, 0, -fwd0.x);
-      // the pair's place and a narrow firing lane cut through the forest edge in front of it (author, 21 XI: the crowns
-      // hid the stand in the scope): trees within reach of the line of sight over the first 250 m go
-      if (window.__sim && window.__sim.hideTreesNear) { window.__sim.restoreTrees(); window.__sim.hideTreesNear(fp.x, fp.z, 3.5);
+      // concealment (author, 21 XI): no lane through the forest - only the trees standing on the pair's bodies and the
+      // few whose crown or trunk crosses the line of sight over the first 60 m go; bushes all around, with a narrow
+      // slit in front for the muzzle and the spotting scope
+      if (window.__sim && window.__sim.hideTreesNear) { window.__sim.restoreTrees(); window.__sim.hideTreesNear(fp.x, fp.z, 2.0);
         const tr = window.__sim.trees, dx = SITE3.mid.x - fp.x, dz = SITE3.mid.z - fp.z, L = Math.hypot(dx, dz), ux = dx / L, uz = dz / L;
-        for (let i = 0; i < tr.length; i += 4) { const px = tr[i] - fp.x, pz = tr[i + 1] - fp.z, along = px * ux + pz * uz; if (along < 0 || along > 250) continue;
-          const h = tr[i + 3], cr = (h < 7 ? h * 0.28 : Math.max(1.2, h * 0.19)) * 1.3 + 1.5;
-          if (Math.abs(px * uz - pz * ux) < cr) window.__sim.hideTreesNear(tr[i], tr[i + 1], 0.3); } }
+        for (let i = 0; i < tr.length; i += 4) { const px = tr[i] - fp.x, pz = tr[i + 1] - fp.z, along = px * ux + pz * uz; if (along < -3 || along > 60) continue;
+          const h = tr[i + 3], cr = (h < 7 ? h * 0.28 : Math.max(1.2, h * 0.19)) * 1.15 + 0.3, perp = Math.abs(px * uz - pz * ux);
+          const lineY = 0.35 + along * (SITE3.aim.y - hAt(fp.x, fp.z)) / L, crownLow = h < 7 ? h * 0.2 : h * 0.54;   // the sight line is low under adult crowns
+          if (perp < 0.45 || (perp < cr && lineY > crownLow - 0.5) || (perp < 2.4 && along < 3 && along > -3)) window.__sim.hideTreesNear(tr[i], tr[i + 1], 0.3); } }
       const range = Math.round(Math.hypot(SITE3.mid.x - fp.x, SITE3.mid.z - fp.z));
       await setConditions({ ...(c || {}), range, bearing: 0, clock: 12 });
       gong.visible = false; spotter.visible = false;
@@ -787,10 +813,11 @@ export async function play(ctx) {
       placeSoldier(observer, at, yawFwd, [["Prone_Fire", 0.5, 1]]);
       const sp = at.clone().addScaledVector(fwd, 1.55).addScaledVector(left, 0.05); sp.y = hAt(sp.x, sp.z);
       obsScope.position.copy(sp); obsScope.rotation.set(0, yawFwd + Math.PI, 0);
+      bushes(true);                                                          // last: around the pair as it lies now
     } else {
       fp.copy(FP0); fwd0.copy(FWD0); left0.set(fwd0.z, 0, -fwd0.x);
       if (window.__sim && window.__sim.restoreTrees) window.__sim.restoreTrees();
-      gong.visible = true; spotter.visible = true; if (observer) observer.m.visible = obsScope.visible = false;
+      gong.visible = true; spotter.visible = true; if (observer) observer.m.visible = obsScope.visible = false; bushes(false);
       if (c) await setConditions(c);
     }
     if (window.__redraw) window.__redraw.kick(1500);

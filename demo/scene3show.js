@@ -43,6 +43,8 @@ export async function startShow({ tl, panel, demo }) {
     tl.holdAt("s14.cmd", 0.5);
     demo.setCam(deckCam); await say("n1");
     demo.setCam(behindCam); await say("n2");
+    // the forest as seen from the stand: the pair stays hidden (author, 21 XI)
+    { const toP = fp.clone().sub(s3.B).setY(0).normalize(); demo.setCam({ p: s3.B.clone().addScaledVector(toP, 0.7).setY(s3.deckY + 1.7), t: fp.clone().setY(fp.y + 0.4), fov: 6 }); await say("n2b"); }
     // the observer's reading: the scope at 12x on the instructor when he stands
     demo.setCam(null); tl.holdAt("s09.why", 0.5); note("Czekamy, aż instruktor stanie…"); await waitStop();
     note("Wysokość 1,80 m → 3,0 mil · 1,8 × 1000 / 3,0 = 600 m"); await say("n3");
