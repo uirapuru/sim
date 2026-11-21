@@ -732,10 +732,73 @@ export async function play(ctx) {
   // the target's direction (author, 19 XI): the whole stand - rifle, bag, shooter, instructor, spotter - turns about the
   // bipod feet to the target, bearing in degrees, > 0 = right of the stand's axis; the start line stays. Every place
   // derived from the stand frame is set again here (in place: the beats hold these objects)
+  // ---------- scenario 3 site (author, 21 XI; docs/superpowers/specs/2026-11-21-scenario3-sniper-team-design.md) ----------
+  // The sniper pair lies in the forest left of the range, 14 m inside the trees, 600 m from the stand's deck; the
+  // instructor walks along the deck's edge facing the forest and stops at its middle for a few seconds. The stand frame
+  // (fp, fwd0) moves to the pair and faces that stop; the gong, hidden, stands at the instructor's chest there as the
+  // hit area, so the ballistics and the live shot work unchanged
+  let SITE = 1;
+  const FP0 = fp.clone(), FWD0 = fwd0.clone();
+  const SITE3 = (() => {
+    const st = (meta.buildings_osm || []).find(b => b.deck - b.ground > 1.5), pair = V(335.0, 0, 1281.5);
+    const P = st.poly.map(([x, z]) => V(x, 0, z)), C = P.reduce((a, p) => a.add(p), V()).multiplyScalar(1 / P.length);
+    // the longest edge that faces the forest (its outward normal towards the pair)
+    let best = null; for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length], m = a.clone().add(b).multiplyScalar(0.5);
+      const out = m.clone().sub(C).setY(0).normalize(), face = out.dot(pair.clone().sub(m).setY(0).normalize()), score = a.distanceTo(b) * Math.max(0, face);
+      if (!best || score > best.score) best = { a, b, score }; }
+    const inset = p => p.clone().add(C.clone().sub(p).setY(0).normalize().multiplyScalar(1.0));   // a metre in from the edge
+    const A = inset(best.a), Bp = inset(best.b), mid = A.clone().add(Bp).multiplyScalar(0.5), deckY = st.deck;
+    // the deck's edge towards the forest is a solid parapet: only the head and shoulders show above it (author, 21 XI,
+    // checked from the pair's eye) - the aim and the hit area are there, 1.30-1.85 m above the deck
+    return { pair, A, B: Bp, mid, deckY, aim: mid.clone().setY(deckY + 1.55), len: A.distanceTo(Bp) };
+  })();
+  // the walk: A -> B -> A at 1.2 m/s, a 6 s stop at the middle on every pass, 1.5 s to turn at the ends
+  function deckWalk(t) {
+    const v = 1.2, half = SITE3.len / v, legT = half + 6 + 1.5, cyc = 2 * legT, u = ((t % cyc) + cyc) % cyc, leg = u < legT ? 0 : 1, w = u - leg * legT;
+    const from = leg ? SITE3.B : SITE3.A, to = leg ? SITE3.A : SITE3.B, dir = to.clone().sub(from).normalize();
+    const tMid = half / 2; let d, stop = false, turn = false;
+    if (w < tMid) d = w * v; else if (w < tMid + 6) { d = SITE3.len / 2; stop = true; } else if (w < half + 6) d = (w - 6) * v; else { d = SITE3.len; turn = true; }
+    const at = from.clone().addScaledVector(dir, Math.min(d, SITE3.len)).setY(SITE3.deckY);
+    const face = stop ? yawOf(SITE3.pair.clone().sub(at).setY(0)) : yawOf(turn ? dir.clone().negate() : dir);
+    return { at, yaw: face, stop, walk: d + leg * SITE3.len, clips: stop || turn ? [["Idle", t % 8, 1]] : [["Walking", ((d + leg * SITE3.len) / 1.35) % 1.0, 1]] };
+  }
+  let deckT = 0, observer = null, obsScope = null;
+  async function setSite(n, c) {
+    SITE = n;
+    if (n === 3) {
+      fp.copy(g(SITE3.pair.clone())); fwd0.copy(SITE3.mid.clone().sub(fp).setY(0).normalize()); left0.set(fwd0.z, 0, -fwd0.x);
+      // the pair's place and a narrow firing lane cut through the forest edge in front of it (author, 21 XI: the crowns
+      // hid the stand in the scope): trees within reach of the line of sight over the first 250 m go
+      if (window.__sim && window.__sim.hideTreesNear) { window.__sim.restoreTrees(); window.__sim.hideTreesNear(fp.x, fp.z, 3.5);
+        const tr = window.__sim.trees, dx = SITE3.mid.x - fp.x, dz = SITE3.mid.z - fp.z, L = Math.hypot(dx, dz), ux = dx / L, uz = dz / L;
+        for (let i = 0; i < tr.length; i += 4) { const px = tr[i] - fp.x, pz = tr[i + 1] - fp.z, along = px * ux + pz * uz; if (along < 0 || along > 250) continue;
+          const h = tr[i + 3], cr = (h < 7 ? h * 0.28 : Math.max(1.2, h * 0.19)) * 1.3 + 1.5;
+          if (Math.abs(px * uz - pz * ux) < cr) window.__sim.hideTreesNear(tr[i], tr[i + 1], 0.3); } }
+      const range = Math.round(Math.hypot(SITE3.mid.x - fp.x, SITE3.mid.z - fp.z));
+      await setConditions({ ...(c || {}), range, bearing: 0, clock: 12 });
+      gong.visible = false; spotter.visible = false;
+      if (!observer) { observer = soldier(gltf, animG.animations); observer.m.name = "observer";
+        obsScope = (await loader.loadAsync("models/spotter60_prone.glb?v=" + window.SIM_V)).scene; obsScope.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(obsScope); }
+      observer.m.visible = obsScope.visible = true;
+      // the observer lies 1.1 m left of the shooter, level with him, his scope in front of his face
+      const at = PRONE.clone().addScaledVector(left, 1.1); at.y = hAt(at.x, at.z);
+      placeSoldier(observer, at, yawFwd, [["Prone_Fire", 0.5, 1]]);
+      const sp = at.clone().addScaledVector(fwd, 1.55).addScaledVector(left, 0.05); sp.y = hAt(sp.x, sp.z);
+      obsScope.position.copy(sp); obsScope.rotation.set(0, yawFwd + Math.PI, 0);
+    } else {
+      fp.copy(FP0); fwd0.copy(FWD0); left0.set(fwd0.z, 0, -fwd0.x);
+      if (window.__sim && window.__sim.restoreTrees) window.__sim.restoreTrees();
+      gong.visible = true; spotter.visible = true; if (observer) observer.m.visible = obsScope.visible = false;
+      if (c) await setConditions(c);
+    }
+    if (window.__redraw) window.__redraw.kick(1500);
+  }
   function turnStand(bearing) {
     const a = (bearing || 0) * Math.PI / 180, right0 = left0.clone().negate();
     fwd.copy(fwd0).multiplyScalar(Math.cos(a)).addScaledVector(right0, Math.sin(a)).normalize(); left.set(fwd.z, 0, -fwd.x);
-    gongBase.copy(W(RANGE, 0)); gong.position.copy(gongBase); gong.rotation.y = yawOf(fwd.clone().negate()); gong.updateMatrixWorld(true); GC.copy(gong.localToWorld(V(0, 1.13, 0)));
+    feet.copy(W(0, 0));
+    gongBase.copy(W(RANGE, 0)); if (SITE === 3) gongBase.y = SITE3.aim.y - 1.13;   // site 3: the hidden plate is the instructor's chest at his stop
+    gong.position.copy(gongBase); gong.rotation.y = yawOf(fwd.clone().negate()); gong.updateMatrixWorld(true); GC.copy(gong.localToWorld(V(0, 1.13, 0)));
     aim.copy(GC).sub(feet.clone().add(V(0, 0.33, 0))).normalize();
     qGround.setFromRotationMatrix(new THREE.Matrix4().lookAt(V(), aim, up)); pGround.copy(feet).sub(BIPOD_FOOT.clone().applyQuaternion(qGround));
     bagTop.copy(RL(V(0, -0.118, -0.075))); bag.position.set(bagTop.x, bagTop.y - bagH, bagTop.z); bag.rotation.y = yawOf(fwd);
@@ -887,7 +950,9 @@ export async function play(ctx) {
     scopeDrag.yaw = cl(yw - (e.clientX - x0) * mpp); scopeDrag.pitch = cl(pt + (e.clientY - y0) * mpp); });
   const dragEnd = () => { if (scopeDrag) { scopeDrag.down = null; dragEl.style.cursor = "grab"; } };
   dragEl.addEventListener("pointerup", dragEnd); dragEl.addEventListener("pointercancel", dragEnd);
-  const onPlate = ([x, y]) => Math.abs(x) <= 0.25 && Math.abs(y) <= 0.5;
+  // the gong's plate; on site 3 the instructor's head and shoulders above the parapet (0.44 m wide, from 0.25 m below the
+  // aim to 0.30 m above it)
+  const onPlate = ([x, y]) => SITE === 3 ? Math.abs(x) <= 0.22 && y >= -0.25 && y <= 0.30 : Math.abs(x) <= 0.25 && Math.abs(y) <= 0.5;
   // miss: a puff of sand on the ground where the path meets it behind (or before) the gong
   // a miss hitting the ground (author, 18 XI: it looked like a grenade): sand grains thrown up to about 1 m and falling
   // back, each on its own ballistic path from a fixed seed (so scrubbing shows the same splash); points in pixels, so
@@ -1264,7 +1329,8 @@ export async function play(ctx) {
       if (strap) { strap.geometry.dispose(); strap.geometry = geo; strap.visible = true; } else { strap = new THREE.Mesh(geo, strapMat); strap.castShadow = true; scene.add(strap); }
     } else if (strap) strap.visible = false;
     // instructor: stands beside the spotter, faces the shooter
-    { const I = S.inst, cl = I.clips ? I.clips.map(c => c[0] === "Walking" ? ["Walking", (I.walk / 1.35) % 1.0, 1] : c) : [["Idle", T % 8, 1]];
+    if (SITE === 3) { const w = deckWalk(deckT); placeSoldier(inst, w.at, w.yaw, w.clips); }   // site 3: on the deck
+    else { const I = S.inst, cl = I.clips ? I.clips.map(c => c[0] === "Walking" ? ["Walking", (I.walk / 1.35) % 1.0, 1] : c) : [["Idle", T % 8, 1]];
       placeSoldier(inst, I.at.clone().setY(hAt(I.at.x, I.at.z)), I.yaw, cl);
       inst.rig.bend(I.lean || 0);
       inst.rig.look(I.look === "port" ? rifle.localToWorld(V(0.02, 0, -0.43)) : man.rig.B.Head.getWorldPosition(V()), 0.7); }
@@ -1497,7 +1563,7 @@ export async function play(ctx) {
   // ---------- frame loop ----------
   let prevT = 0;
   const hook = dt => {
-    standGrassTime.value += dt;
+    standGrassTime.value += dt; if (SITE === 3) deckT += dt;
     tl.step(dt);
     const T = tl.T;
     if (tl.playing && T > prevT) {                         // one-shot sounds crossed this frame
@@ -1527,7 +1593,7 @@ export async function play(ctx) {
   (window.__frameHooks = window.__frameHooks || []).push(hook);
   // draw only when something changes (index.html): what this scene needs drawn every frame, and a kick after every
   // scripted change - the timeline moved, a step held its frame, the conditions, a highlight (author, 20 XI)
-  window.__demoState = () => tl.playing || sway || liveCam || LIVE.some(t => t != null && performance.now() - t < 8000) || freeCam || fpp || (scopeDrag && scopeDrag.down) ? "busy" : hl || dirLine.visible ? "ambient" : "idle";
+  window.__demoState = () => tl.playing || SITE === 3 || sway || liveCam || LIVE.some(t => t != null && performance.now() - t < 8000) || freeCam || fpp || (scopeDrag && scopeDrag.down) ? "busy" : hl || dirLine.visible ? "ambient" : "idle";
   if (window.__redraw) window.__redraw.kick(1500);                     // the first frames of the loaded scene
   addEventListener("pointerdown", () => snd.unlock(), { once: true });
   startGate(TITLE, () => { snd.unlock(); tl.seek(0); tl.play(); }, k => runTask(k));
@@ -1541,7 +1607,7 @@ export async function play(ctx) {
     catch (e) { console.error("task", e); } finally { taskOn = false; } }   // sound needs a click first: the scene starts on it
   window.__demo = { COL, runTask: (...a) => runTask(...a), tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt,
     setConditions, sightBlocked, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; },
-    setTargets, activateTarget, setCardTargets: list => { CARD_PREV = list || []; }, setRounds: n => { NR = n; }, aimNudge, setAimHold: on => { holding = !!on; }, breathChart: on => { chartOn = !!on; drawChart(); }, fireLive, getDial: () => ({ elev: ELEV, wind: WIND }), setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
+    setSite, deckWalk: t => deckWalk(t ?? deckT), get site3() { return SITE3; }, setTargets, activateTarget, setCardTargets: list => { CARD_PREV = list || []; }, setRounds: n => { NR = n; }, aimNudge, setAimHold: on => { holding = !!on; }, breathChart: on => { chartOn = !!on; drawChart(); }, fireLive, getDial: () => ({ elev: ELEV, wind: WIND }), setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
   { const kick = () => window.__redraw && window.__redraw.kick(600);
     for (const k of ["seek", "holdAt", "play", "pause", "playRange", "cancelRange"]) { const f = tl[k].bind(tl); tl[k] = (...a) => { kick(); return f(...a); }; }
     for (const [k, v] of Object.entries(Object.getOwnPropertyDescriptors(window.__demo))) if (typeof v.value === "function") {
