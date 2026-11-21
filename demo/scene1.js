@@ -801,8 +801,14 @@ export async function play(ctx) {
   }
   function withdrawAfter() {
     const S = withdraw.S, w = (performance.now() - withdraw.t0) / 1000; if (obsScope) obsScope.visible = false;
-    if (observer) { const at = S.man.at.clone().addScaledVector(left, 1.1); at.y = hAt(at.x, at.z);
-      const cl = S.man.clips[0][0] === "Walking" ? [["Walking", ((S.man.walk + 0.6) / 1.35) % 1.0, 1]] : S.man.clips; placeSoldier(observer, at, S.man.yaw, cl); }
+    // the observer goes a moment after the shooter, his own rhythm (author, 21 XI: in step they looked mechanical):
+    // crawling 1.3 s later and half a crawl cycle apart, on foot a pace behind him on his right (the camera is on the left)
+    if (observer) { const back = fwd.clone().negate(); let at, cl;
+      if (withdraw.phase === "crawl") { const dur = man.acts.Low_Crawl ? man.acts.Low_Crawl.getClip().duration : 2, wo = Math.max(0, w - 1.3);
+        at = PRONE.clone().addScaledVector(left, 1.1).addScaledVector(back, Math.min(wo * 0.32, 50)); cl = [["Low_Crawl", (wo + dur * 0.5) % dur, 1]]; }
+      else { const d = Math.max(0, w - 1.1) * 1.3;
+        at = withdraw.base.clone().addScaledVector(left, -1.1).addScaledVector(back, d); cl = [["Walking", ((d + 0.6) / 1.35) % 1.0, 1]]; }
+      at.y = hAt(at.x, at.z); placeSoldier(observer, at, S.man.yaw, cl); }
     if (withdraw.phase === "walk" && w > (withdraw.gone ?? 14)) { man.m.visible = rifle.visible = false; if (observer) observer.m.visible = false; }   // gone among the trees
   }
   const setWithdraw = phase => { if (!phase) { withdraw = null; if (observer) observer.m.visible = SITE === 3; man.m.visible = rifle.visible = true; return; }
