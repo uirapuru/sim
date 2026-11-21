@@ -184,15 +184,17 @@ export async function startTask(mode, ctx, opts = {}) {
         let k = demo.shift3, moves = 0, busy = false;
         const trouble = k => k <= -2 ? "W lunecie strzelca gałęzie zasłaniają trybunę." : k >= 2 ? "W lunecie obserwatora gałęzie zasłaniają trybunę."
           : k !== 0 ? "Obraz jest, ale przed lufą, na torze pocisku, wisi gałązka – zobacz widok wzdłuż lufy." : "";
-        const VIEWS = [["Luneta strzelca", () => { demo.showBoreLine(false); demo.setCam(null); demo.setScopeEye("shooter"); tl.holdAt("s15.trigger", 0.6); }],
-          ["Luneta obserwatora", () => { demo.showBoreLine(false); demo.setCam(null); demo.setScopeEye("observer"); tl.holdAt("s09.why", 0.5); }],
-          ["Wzdłuż lufy", () => { demo.setScopeEye("shooter"); tl.holdAt("s14.cmd", 0.5); demo.setCam(demo.barrelCam()); demo.showBoreLine(true); }]];
-        let view_ = 0; const vb = document.createElement("div"); vb.className = "choices";
+        // both scopes on a split screen (author, 21 XI), or along the barrel
+        const VIEWS = [["Lunety: strzelec | obserwator", () => { demo.showBoreLine(false); demo.setCam(null); tl.holdAt("s15.trigger", 0.6); demo.setSplit(true); }],
+          ["Wzdłuż lufy", () => { demo.setSplit(false); tl.holdAt("s14.cmd", 0.5); demo.setCam(demo.barrelCam()); demo.showBoreLine(true); }]];
+        // the bar goes to the top centre, in short rows: the two scopes below stay in sight
+        const barEl = document.getElementById("tkBar"); barEl.classList.remove("side"); barEl.classList.add("top"); barEl.style.left = barEl.style.top = "";
+        let view_ = 0; const vb = document.createElement("div"); vb.className = "choices row";
         const showView = i => { view_ = i; [...vb.children].forEach((b, j) => b.classList.toggle("on", j === i)); VIEWS[i][1](); };
         VIEWS.forEach(([t], i) => { const b = document.createElement("button"); b.textContent = t; b.onclick = () => showView(i); vb.append(b); });
         const lab = document.createElement("div"); lab.className = "dragTip"; lab.textContent = "Widok:";
         const lab2 = document.createElement("div"); lab2.className = "dragTip"; lab2.textContent = "Decyzja:";
-        const db = document.createElement("div"); db.className = "choices";
+        const db = document.createElement("div"); db.className = "choices row";
         const move = async d => { if (busy) return; const nk = k + d, txt = d > 0 ? "Pół metra w lewo" : "Pół metra w prawo";
           if (Math.abs(nk) > 3) { view.feedback("Dalej gęste krzaki – tam nie ma miejsca na stanowisko.", "info"); return; }
           if (Math.abs(nk) > Math.abs(k)) { if (exam) { finish({ ok: false, given: txt }); return; } misses++; firstWrong ??= txt; }
@@ -203,7 +205,7 @@ export async function startTask(mode, ctx, opts = {}) {
           if (exam) { finish({ ok: false, given: txt }); return; } misses++; firstWrong ??= txt; view.feedback("Nie tym razem. " + trouble(k), "bad"); };
         for (const [t, f] of [["Pół metra w lewo", () => move(1)], ["Pół metra w prawo", () => move(-1)], ["Zostajemy tutaj", stay]]) { const b = document.createElement("button"); b.textContent = t; b.onclick = f; db.append(b); }
         view.body.append(lab, vb, lab2, db); showView(0);
-        extraCleanup = () => { demo.showBoreLine(false); demo.setCam(null); demo.setScopeEye("shooter"); };
+        extraCleanup = () => { barEl.classList.remove("top"); demo.setSplit(false); demo.showBoreLine(false); demo.setCam(null); demo.setScopeEye("shooter"); };
       } else if (st.kind === "choice") {
         const box = document.createElement("div"); box.className = "choices";
         for (const o of choiceOptions(st, c)) { const b = document.createElement("button"); b.textContent = o; b.onclick = () => checkChoice(st, o, c) ? right(o) : wrong(o); box.append(b); }

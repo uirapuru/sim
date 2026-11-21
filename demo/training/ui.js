@@ -22,6 +22,8 @@ const CSS = `
 #tkBar .fireCount { flex-basis: 100%; color: #ccc; font-size: 13px; }
 #tkBar .dragTip { flex-basis: 100%; width: 100%; color: #ffd84d; font-weight: 600; margin: 2px 0 6px; }
 #tkBar .choices button { text-align: left; }
+#tkBar .choices.row { flex-direction: row; flex-wrap: wrap; }   /* scenario 3, the place: short rows over the split screen */
+#tkBar.top { top: 8px; left: 50%; transform: translateX(-50%); width: min(760px, calc(100vw - 120px)); }
 #tkBar .choices button.on { background: #f2c94c; color: #111; border-color: #f2c94c; }   /* the view being looked through (scenario 3, the place) */
 .tkMenu { position: fixed; z-index: 130; background: rgba(12,14,16,.95); border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 5px;
   font: 14px system-ui; color: #eee; max-width: 330px; }

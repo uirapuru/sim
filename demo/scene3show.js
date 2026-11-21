@@ -48,12 +48,14 @@ export async function startShow({ tl, panel, demo, ready = () => {} }) {
     { const toP = fp.clone().sub(s3.B).setY(0).normalize(); demo.setCam({ p: s3.B.clone().addScaledVector(toP, 0.7).setY(s3.deckY + 1.7), t: fp.clone().setY(fp.y + 0.4), fov: 6 }); await say("n2b"); }
     // the place (author, 21 XI): the first one half hides the stand, the next has a twig in front of the muzzle,
     // the third gives a view good enough and a clear way for the bullet - half a metre at a time to the left
-    demo.setCam(null); demo.setScopeEye("shooter"); tl.holdAt("s15.trigger", 0.6); note("Miejsce 1: luneta strzelca"); await say("n2c");
-    await demo.setSite(3, COND, -1); tl.holdAt("s15.trigger", 0.6); note("Miejsce 2: luneta strzelca"); await say("n2d");
-    tl.holdAt("s14.cmd", 0.5); demo.setCam(demo.barrelCam()); demo.showBoreLine(true); note("Miejsce 2: wzdłuż lufy – tor pocisku (żółty) kończy się w gałązce"); await say("n2e");
-    demo.showBoreLine(false); demo.setCam(null);
-    await demo.setSite(3, COND, 0); tl.holdAt("s15.trigger", 0.6); note("Miejsce 3: luneta strzelca"); await say("n2f");
-    tl.holdAt("s14.cmd", 0.5); demo.setCam(demo.barrelCam()); demo.showBoreLine(true); note("Miejsce 3: wzdłuż lufy – tor wolny"); await wait(2500);
+    // both scopes side by side (author, 21 XI): the shooter's on the left, the observer's on the right
+    const both = () => { demo.showBoreLine(false); demo.setCam(null); tl.holdAt("s15.trigger", 0.6); demo.setSplit(true); };
+    const barrel = () => { demo.setSplit(false); tl.holdAt("s14.cmd", 0.5); demo.setCam(demo.barrelCam()); demo.showBoreLine(true); };
+    both(); note("Miejsce 1"); await say("n2c");
+    await demo.setSite(3, COND, -1); both(); note("Miejsce 2"); await say("n2d");
+    barrel(); note("Miejsce 2: wzdłuż lufy – tor pocisku (żółty) kończy się w gałązce"); await say("n2e");
+    await demo.setSite(3, COND, 0); both(); note("Miejsce 3"); await say("n2f");
+    barrel(); note("Miejsce 3: wzdłuż lufy – tor wolny"); await wait(2500);
     demo.showBoreLine(false); demo.setCam(null);
     pairCam = { p: fp.clone().add({ x: side.x * 3.2 - dirOut.x * 2.2, y: 1.4, z: side.z * 3.2 - dirOut.z * 2.2 }), t: fp.clone().add({ x: side.x * 0.6, y: 0.25, z: side.z * 0.6 }), fov: 48 };
     // the observer's reading: his spotting scope at 12x on the instructor when he stands
@@ -82,7 +84,7 @@ export async function startShow({ tl, panel, demo, ready = () => {} }) {
     await say("n7"); await wait(5000);
     demo.setWithdraw(null);
   } finally {
-    sub.remove(); box.remove(); skip.remove(); demo.setCam(null); demo.setKestrelInset(null); demo.setWithdraw(null); demo.showBoreLine(false); demo.setScopeEye("shooter");
+    sub.remove(); box.remove(); skip.remove(); demo.setCam(null); demo.setKestrelInset(null); demo.setWithdraw(null); demo.showBoreLine(false); demo.setScopeEye("shooter"); demo.setSplit(false);
     await demo.setSite(1, VIEW_CONDITIONS); await demo.setConditions(VIEW_CONDITIONS, true);
     tl.voice = voice0; panel.setSubs(true); panel.setLocked(false); tl.holdAt(tl.beats[0].say, 0);
   }

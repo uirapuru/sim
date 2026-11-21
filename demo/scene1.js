@@ -785,7 +785,7 @@ export async function play(ctx) {
     return { at, yaw, stop, walk: d, clips: stop || turn ? [["Idle", t % 8, 1]] : [["Walking", (d / 1.35) % 1.0, 1]] };
   }
   let deckT = 0, observer = null, obsScope = null;
-  const STEP3 = 0.5; let shift3 = 0, scopeFrom = "shooter", boreLine = null;
+  const STEP3 = 0.5; let shift3 = 0, scopeFrom = "shooter", boreLine = null, split3 = false;
   const obsEyeW = () => obsScope.position.clone().addScaledVector(fwd, -0.42).add(V(0, 0.36, 0));   // the spotting scope's eyepiece   // site 3: the pair's place, in half metres to the left (+) or right (-) of the good one
   // site 3 after a hit (author, 21 XI): the instructor falls (no gong sound), the pair withdraws - crawling back into
   // the forest, then on foot, and is gone
@@ -921,7 +921,7 @@ export async function play(ctx) {
     } else {
       fp.copy(FP0); fwd0.copy(FWD0); left0.set(fwd0.z, 0, -fwd0.x);
       if (window.__sim && window.__sim.restoreTrees) window.__sim.restoreTrees();
-      gong.visible = true; spotter.visible = true; if (observer) observer.m.visible = obsScope.visible = false; bushes(false); scopeFrom = "shooter"; shift3 = 0;
+      gong.visible = true; spotter.visible = true; if (observer) observer.m.visible = obsScope.visible = false; bushes(false); scopeFrom = "shooter"; shift3 = 0; split3 = false;
       if (c) await setConditions(c);
     }
     if (window.__redraw) window.__redraw.kick(1500);
@@ -1252,7 +1252,33 @@ export async function play(ctx) {
     m.fragmentShader = src.replace(/float factor = \( focus \+ viewZ \);/, "float factor = min( max( focus, 50.0 ) + viewZ, 0.0 );"); m.needsUpdate = true;
     if (m.fragmentShader === src) console.warn("bokeh patch not applied"); }
   addEventListener("resize", () => composer.setSize(innerWidth, innerHeight));
-  window.__renderOverride = () => { updateLabel(); pulseHighlight();               // __dbgCam: test hook, a fixed camera for close-up checks
+  // site 3, the place (author, 21 XI): the screen split in two - the shooter's PM II on the left, the observer's
+  // Spotter 60 on the right, both on the instructor's chest at his stop
+  const splitCam = new THREE.PerspectiveCamera(10, 1, 0.05, 20000); let splitOv = null, splitKey = "";
+  function renderSplit() {
+    const r = ctx.renderer, W_ = innerWidth, H = innerHeight, hw = Math.floor(W_ / 2), SIDES = [["shooter", 12, false], ["observer", 20, true]];
+    const key = `${W_}|${H}`;
+    if (!splitOv) { splitOv = document.createElement("div"); splitOv.style.cssText = "position:fixed;inset:0;z-index:60;pointer-events:none"; document.body.append(splitOv); }
+    splitOv.style.display = "block";
+    if (key !== splitKey) { splitKey = key;
+      splitOv.innerHTML = SIDES.map(([who, mag, spot], i) => { const g_ = scopeGeom(mag, spot, hw, H), cx = hw / 2, cy = H / 2, R = g_.Rpx, k = g_.pxPerMrad;
+        return `<div style="position:absolute;left:${i * hw}px;top:0;width:${hw}px;height:${H}px;overflow:hidden">
+          <div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 50%, transparent ${R - 4}px, rgba(0,0,0,.92) ${R + 1}px, #000 ${R + 3}px)"></div>
+          <svg width="${hw}" height="${H}" style="position:absolute;inset:0">${spot ? reticleSpotter(cx, cy, R, k) : reticlePM(cx, cy, R, k)}</svg>
+          <div style="position:absolute;top:${Math.min(H - 44, cy + R + 6)}px;width:100%;text-align:center;font:600 15px system-ui;color:#f2c94c">${who === "shooter" ? "Strzelec" : "Obserwator"}
+            <span style="color:#aaa;font:12px monospace;font-weight:400"> · ${spot ? "Hensoldt Spotter 60 · 20×" : "S&amp;B PM II 3-12×50 · 12×"}</span></div></div>`; }).join("")
+        + `<div style="position:absolute;left:${hw - 1}px;top:0;width:2px;height:${H}px;background:#333"></div>`; }
+    const vis = obsScope.visible; obsScope.visible = false;
+    r.setScissorTest(true);
+    SIDES.forEach(([who, mag, spot], i) => { const g_ = scopeGeom(mag, spot, hw, H), eye = who === "shooter" ? rifle.localToWorld(EYE.clone()) : obsEyeW();
+      splitCam.fov = g_.vfov; splitCam.aspect = hw / H; splitCam.near = camera.near; splitCam.far = camera.far; splitCam.updateProjectionMatrix();
+      splitCam.position.copy(eye); splitCam.up.set(0, 1, 0); splitCam.lookAt(GC);
+      r.setViewport(i * hw, 0, hw, H); r.setScissor(i * hw, 0, hw, H); r.render(scene, splitCam); });
+    r.setScissorTest(false); r.setViewport(0, 0, W_, H); obsScope.visible = vis;
+  }
+  window.__renderOverride = () => { updateLabel(); pulseHighlight();
+    if (split3 && SITE === 3 && obsScope) { renderSplit(); return; }
+    if (splitOv) splitOv.style.display = "none";               // __dbgCam: test hook, a fixed camera for close-up checks
     const dc = window.__dbgCam; if (dc) { camera.position.copy(dc.p); camera.lookAt(dc.t); camera.fov = dc.fov || 40; camera.updateProjectionMatrix(); }
     const hide = dc && dc.noBody ? [] : null; if (hide) man.m.traverse(o => { if (o.isSkinnedMesh && o.visible) { o.visible = false; hide.push(o); } });
     // simple graphics (index.html, window.__quality): straight to the screen, no depth-of-field passes
@@ -1645,27 +1671,46 @@ export async function play(ctx) {
   }
 
   // ---------- scope view: true field of view of the PM II 3-12x50, FFP mil-dot reticle, breathing ----------
-  function scopeGeom(mag) {
-    const H = innerHeight, Rpx = Math.min(innerWidth, H) * 0.42, tfov = 366 / mag / 1000;       // rad, full field (12 m at 3x, 3.1 m at 12x per 100 m)
+  // spot: the Hensoldt Spotter 60 (20-60x, 33 m per 1000 m at 20x) instead of the rifle's PM II
+  function scopeGeom(mag, spot = false, W_ = innerWidth, H = innerHeight) {
+    const Rpx = Math.min(W_, H) * 0.42, tfov = spot ? 33 * 20 / mag / 1000 : 366 / mag / 1000;   // rad, full field (PM II: 12 m at 3x, 3.1 m at 12x per 100 m)
     const f = Rpx / Math.tan(tfov / 2);
     return { Rpx, f, vfov: 2 * Math.atan(H / 2 / f) * 180 / Math.PI, pxPerMrad: f * 0.001 };
   }
+  const spotting = () => SITE === 3 && scopeFrom === "observer" && obsScope && observer && observer.m.visible;
+  const magOf = sc => spotting() ? Math.max(20, sc.mag) : sc.mag;   // the spotting scope starts at 20x
+  // the PM II: mil-dot cross, thick posts from 10 mil out
+  const reticlePM = (cx, cy, R, k) => {
+    let s = `<line x1="${cx - R}" y1="${cy}" x2="${cx + R}" y2="${cy}" stroke="#0b0b0b" stroke-width="1.3"/><line x1="${cx}" y1="${cy - R}" x2="${cx}" y2="${cy + R}" stroke="#0b0b0b" stroke-width="1.3"/>`;
+    for (let m = -10; m <= 10; m++) { if (!m) continue; const d = m * k; if (Math.abs(d) > R) continue;
+      s += `<circle cx="${cx + d}" cy="${cy}" r="${Math.max(1.2, 0.1 * k)}" fill="#0b0b0b"/><circle cx="${cx}" cy="${cy + d}" r="${Math.max(1.2, 0.1 * k)}" fill="#0b0b0b"/>`; }
+    for (const [x1, y1, x2, y2] of [[cx - R, cy, cx - 10 * k, cy], [cx + 10 * k, cy, cx + R, cy], [cx, cy + 10 * k, cx, cy + R]]) s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#0b0b0b" stroke-width="${Math.max(3, 0.4 * k)}"/>`;
+    return s; };
+  // the Spotter 60 (its manual, fig. 3; author 21 XI): a small centre cross and an L of two 10-mil scales, 5 mil left
+  // and 5 mil below the centre, mil-dots every mil (0.2 mil across), a 2-mil cross line in the middle of each scale
+  const reticleSpotter = (cx, cy, R, k) => {
+    const L = (x1, y1, x2, y2, w = 1.3) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#0b0b0b" stroke-width="${w}"/>`, dot = (x, y) => `<circle cx="${x}" cy="${y}" r="${Math.max(1.3, 0.1 * k)}" fill="#0b0b0b"/>`;
+    const xv = cx - 5 * k, yh = cy + 5 * k, c = Math.max(4, 0.35 * k);
+    let s = L(cx - c, cy, cx + c, cy, 1) + L(cx, cy - c, cx, cy + c, 1);                          // centre cross
+    s += L(xv, cy - 5 * k, xv, cy + 5 * k) + L(cx - 5 * k, yh, cx + 5 * k, yh);                      // the two scales
+    s += L(xv - k, cy, xv + k, cy) + L(cx, yh - k, cx, yh + k);                                       // their middle lines
+    for (let m = 1; m <= 4; m++) s += dot(xv, cy - m * k) + dot(xv, cy + m * k) + dot(cx - m * k, yh) + dot(cx + m * k, yh);
+    return s; };
   function setScope(sc, T) {
     if (!sc) { if (scopeOv) { scopeOv.style.display = "none"; } canvas.style.filter = ""; return; }
     if (!scopeOv) { scopeOv = document.createElement("div"); scopeOv.style.cssText = "position:fixed;inset:0;z-index:60;pointer-events:none"; document.body.append(scopeOv); }
     scopeOv.style.display = "block";
-    const g_ = scopeGeom(sc.mag), key = `${sc.mag.toFixed(2)}|${innerWidth}|${innerHeight}|${sc.measure}`;
+    if (split3) { scopeOv.style.display = "none"; canvas.style.filter = ""; return; }   // the split view draws its own two
+    const spot = spotting(), mag = magOf(sc), g_ = scopeGeom(mag, spot), key = `${mag.toFixed(2)}|${spot}|${innerWidth}|${innerHeight}|${sc.measure}`;
     if (key !== lastMag) {
       lastMag = key;
       const W_ = innerWidth, H = innerHeight, cx = W_ / 2, cy = H / 2, R = g_.Rpx, k = g_.pxPerMrad;
-      let s = `<line x1="${cx - R}" y1="${cy}" x2="${cx + R}" y2="${cy}" stroke="#0b0b0b" stroke-width="1.3"/><line x1="${cx}" y1="${cy - R}" x2="${cx}" y2="${cy + R}" stroke="#0b0b0b" stroke-width="1.3"/>`;
-      for (let m = -10; m <= 10; m++) { if (!m) continue; const d = m * k; if (Math.abs(d) > R) continue;
-        s += `<circle cx="${cx + d}" cy="${cy}" r="${Math.max(1.2, 0.1 * k)}" fill="#0b0b0b"/><circle cx="${cx}" cy="${cy + d}" r="${Math.max(1.2, 0.1 * k)}" fill="#0b0b0b"/>`; }
-      for (const [x1, y1, x2, y2] of [[cx - R, cy, cx - 10 * k, cy], [cx + 10 * k, cy, cx + R, cy], [cx, cy + 10 * k, cx, cy + R]]) s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#0b0b0b" stroke-width="${Math.max(3, 0.4 * k)}"/>`;
+      const s = spot ? reticleSpotter(cx, cy, R, k) : reticlePM(cx, cy, R, k);
+      const label = spot ? `Hensoldt Spotter 60 · ${mag.toFixed(0)}× · siatka obserwacyjna (mil)` : `S&amp;B PM II 3-12×50 · ${mag.toFixed(1).replace(".", ",")}× · siatka mil-dot (FFP)`;
 
       scopeOv.innerHTML = `<div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 50%, transparent ${R - 4}px, rgba(0,0,0,.92) ${R + 1}px, #000 ${R + 3}px)"></div>
         <svg width="${W_}" height="${H}" style="position:absolute;inset:0">${s}</svg><svg class="measure" width="${W_}" height="${H}" style="position:absolute;inset:0"></svg>
-        <div style="position:absolute;bottom:120px;width:100%;text-align:center;color:#aaa;font:13px monospace">S&amp;B PM II 3-12×50 · ${sc.mag.toFixed(1).replace(".", ",")}× · siatka mil-dot (FFP)</div>`;
+        <div style="position:absolute;bottom:120px;width:100%;text-align:center;color:#aaa;font:13px monospace">${label}</div>`;
     }
     canvas.style.filter = sc.blur ? `blur(${Math.min(6, sc.blur).toFixed(1)}px)` : "";
     // the measured size drawn along the real edges of the plate, projected every frame (the reticle moves over it)
@@ -1684,7 +1729,7 @@ export async function play(ctx) {
       if (ms.innerHTML !== m) ms.innerHTML = m; }
   }
   function scopeCamera(sc, T, recoil) {
-    const g_ = scopeGeom(sc.mag); lastScopeMag = sc.mag;
+    const g_ = scopeGeom(magOf(sc), spotting()); lastScopeMag = sc.mag;
     camera.fov = g_.vfov; camera.updateProjectionMatrix();
     const obsV = SITE === 3 && scopeFrom === "observer" && obsScope && observer && observer.m.visible;
     const eye = obsV ? obsEyeW() : rifle.localToWorld(EYE.clone());
@@ -1765,7 +1810,7 @@ export async function play(ctx) {
     catch (e) { console.error("task", e); } finally { if (veil) veil.remove(); panel.setOverride(null); taskOn = false; if (window.showWelcome && document.documentElement.classList.contains("app")) window.showWelcome(); } }   // back to the menu   // sound needs a click first: the scene starts on it
   window.__demo = { COL, runTask: (...a) => runTask(...a), tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt,
     setConditions, sightBlocked, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; },
-    setWithdraw, get targetDown() { return !!deckFall; }, get shift3() { return shift3; }, setScopeEye: w => { scopeFrom = w === "observer" ? "observer" : "shooter"; },
+    setWithdraw, get targetDown() { return !!deckFall; }, get shift3() { return shift3; }, setSplit: on => { split3 = !!on; lastMag = -1; if (window.__redraw) window.__redraw.kick(800); }, setScopeEye: w => { scopeFrom = w === "observer" ? "observer" : "shooter"; },
     // beside the barrel, along it: what lies in front of the muzzle (site 3, the twig under the line)
     barrelCam: () => ({ p: RL(V(0.15, 0.04, -0.95)), t: RL(V(0, -0.02, -2.9)), fov: 30 }),
     // the bullet's way out of the muzzle, a thin yellow line over the first 8 m (shown with the barrel view)
