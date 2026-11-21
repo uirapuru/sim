@@ -17,6 +17,30 @@
   "duration": 11.84,
   "text": "Tak wygląda las z trybuny. Pary nie widać: leży w cieniu drzew, za krzakami, a przed lufą i lunetą zostawiła tylko wąską szczelinę. Nie widać jej też z drogi przy lesie."
  },
+ "n2c": {
+  "file": "n2c.mp3",
+  "who": "narrator",
+  "duration": 10.32,
+  "text": "Pierwsze miejsce. W lunecie strzelca gałęzie zasłaniają większą część trybuny. Z takiego obrazu nie da się prowadzić ognia. Para przesuwa się pół metra w lewo."
+ },
+ "n2d": {
+  "file": "n2d.mp3",
+  "who": "narrator",
+  "duration": 7.2,
+  "text": "Teraz obraz jest czysty. Ale to nie wszystko: strzelec sprawdza jeszcze, czy nic nie stoi na drodze pocisku."
+ },
+ "n2e": {
+  "file": "n2e.mp3",
+  "who": "narrator",
+  "duration": 9.44,
+  "text": "Tuż przed lufą, poniżej linii celowania, wisi gałązka. W lunecie jej prawie nie widać, a pocisk by w nią trafił. Jeszcze pół metra w lewo."
+ },
+ "n2f": {
+  "file": "n2f.mp3",
+  "who": "narrator",
+  "duration": 8.08,
+  "text": "Tutaj liście wchodzą z boku w obraz, ale instruktor jest dobrze widoczny, a przed lufą nic nie ma. To jest stanowisko."
+ },
  "n3": {
   "file": "n3.mp3",
   "who": "narrator",

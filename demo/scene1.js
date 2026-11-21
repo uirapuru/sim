@@ -785,6 +785,8 @@ export async function play(ctx) {
     return { at, yaw, stop, walk: d, clips: stop || turn ? [["Idle", t % 8, 1]] : [["Walking", (d / 1.35) % 1.0, 1]] };
   }
   let deckT = 0, observer = null, obsScope = null;
+  const STEP3 = 0.5; let shift3 = 0, scopeFrom = "shooter", boreLine = null;
+  const obsEyeW = () => obsScope.position.clone().addScaledVector(fwd, -0.42).add(V(0, 0.36, 0));   // the spotting scope's eyepiece   // site 3: the pair's place, in half metres to the left (+) or right (-) of the good one
   // site 3 after a hit (author, 21 XI): the instructor falls (no gong sound), the pair withdraws - crawling back into
   // the forest, then on foot, and is gone
   let deckFall = null, withdraw = null;
@@ -814,8 +816,11 @@ export async function play(ctx) {
     const geo = new THREE.IcosahedronGeometry(1, 1); { const p = geo.attributes.position; for (let i = 0; i < p.count; i++) { const n = 0.8 + 0.3 * Math.sin(p.getX(i) * 7 + p.getZ(i) * 5) * Math.cos(p.getY(i) * 6); p.setXYZ(i, p.getX(i) * n, (p.getY(i) * 0.5 + 0.5) * n, p.getZ(i) * n); } geo.computeVertexNormals(); }
     // (colours per instance below)
     const mid = PRONE.clone().addScaledVector(left, 0.55);                     // between the shooter and the observer
-    const scopeEye = RL(EYE), obsEye = obsScope ? obsScope.position.clone() : scopeEye.clone().addScaledVector(left, 1.1);
+    const scopeEye = RL(EYE), obsEye = obsScope ? obsEyeW() : scopeEye.clone().addScaledVector(left, 1.1);
     const sightLines = [[scopeEye, SITE3.aim.clone()], [obsEye, SITE3.aim.clone()]];
+    // the places half a metre to each side (setSite's shift) keep a clear view too: there the trouble is a branch
+    // under the line, in front of the muzzle (author, 21 XI) - put there on purpose below, not by chance
+    const kept = [...sightLines]; for (const k of [-1, 1]) for (const e of [scopeEye, obsEye]) kept.push([e.clone().addScaledVector(left, k * STEP3), SITE3.aim.clone()]);
     const near = (p, a, b) => { const ab = b.clone().sub(a).setY(0), t = Math.min(1, Math.max(0, p.clone().sub(a).setY(0).dot(ab) / ab.lengthSq()));
       return p.distanceTo(a.clone().lerp(b, t).setY(p.y)); };
     // the lane of the withdrawal (50 m straight back), kept open so the lesson's camera sees them crawl
@@ -826,12 +831,15 @@ export async function play(ctx) {
     const along = (p, a, b) => { const ab = b.clone().sub(a).setY(0), L = ab.length(), t = p.clone().sub(a).setY(0).dot(ab) / (L * L);
       const tc = Math.max(0, t); return { ahead: t * L, perp: p.distanceTo(a.clone().lerp(b, tc).setY(p.y)), y: a.y + (b.y - a.y) * tc }; };
     const fitH = (p, rad, hgt) => { let h = hgt; const gy = hAt(p.x, p.z);
-      for (const [a, b] of sightLines) { const l = along(p, a, b); if (l.ahead < -0.4 || l.perp > rad + 0.25) continue; h = Math.min(h, (l.y - 0.1 - gy) / 1.1); }
+      for (const [a, b] of kept) { const l = along(p, a, b); if (l.ahead < -0.4 || l.perp > rad + 0.25) continue; h = Math.min(h, (l.y - 0.1 - gy) / 1.1); }
       return h; };
     const treeOk = (p, h, cr) => { const gy = hAt(p.x, p.z);
-      return sightLines.every(([a, b]) => { const l = along(p, a, b); if (l.ahead < -0.6) return true;
+      return kept.every(([a, b]) => { const l = along(p, a, b); if (l.ahead < -0.6) return true;
         return l.perp > 0.45 && (l.perp > cr + 0.25 || gy + 0.3 * h > l.y + 0.35); }); };
-    const offLane = (p, r) => near(p, lane[0], lane[1]) > r + 0.4;
+    // nothing on the bodies of any of the places, nor in the lanes they crawl back by
+    const rel = p => { const d = p.clone().sub(PRONE).setY(0); return { a: d.dot(fwd), l: d.dot(left) }; };
+    const offLane = (p, r) => { const q = rel(p), L0 = -STEP3 * 3 - 0.7 - r, L1 = 1.1 + STEP3 * 3 + 0.7 + r;
+      return !(q.l > L0 && q.l < L1 && q.a > -52 && q.a < 1.9 + r); };
     const ring = (d0, d1, spread = Math.PI) => { const ang = (rnd() * 2 - 1) * spread, d = d0 + rnd() * (d1 - d0);
       return mid.clone().addScaledVector(fwd.clone().multiplyScalar(Math.cos(ang)).addScaledVector(left, Math.sin(ang)), d); };
     // all as instances: hundreds of plants in four draw calls
@@ -854,37 +862,66 @@ export async function play(ctx) {
       M4.compose(V(p.x, y - 0.1, p.z), Q, V(1 + h * 0.08, h * 0.45, 1 + h * 0.08)); tm.setMatrixAt(i, M4);
       M4.compose(V(p.x, y + h * 0.3, p.z), Q, V(cr, h * 0.72, cr)); cm.setMatrixAt(i, M4); cm.setColorAt(i, col.set(r < 0.5 ? 0x2f4a26 : 0x3a5530)); });
     for (const m of [bm, tm, cm]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; bushGroup.add(m); }
+    // the places to either side, each with its own trouble (author, 21 XI): to the right the shooter's scope is
+    // covered by leafy branches (more the further), to the left the observer's (the shooter would lie on the good
+    // place's observer line); half a metre off, the view is clear but a twig hangs under the line in front of the
+    // muzzle - the bullet would hit it. At the good place a few leaves show at the edge of the view, nothing more.
+    const leafG = new THREE.IcosahedronGeometry(1, 2); { const q = leafG.attributes.position; for (let i = 0; i < q.count; i++) { const n = 0.75 + 0.35 * Math.sin(q.getX(i) * 9 + q.getY(i) * 7) * Math.cos(q.getZ(i) * 8); q.setXYZ(i, q.getX(i) * n, q.getY(i) * n, q.getZ(i) * n); } leafG.computeVertexNormals(); }
+    const leafM = new THREE.MeshLambertMaterial({ color: 0x35502a }), twigM = new THREE.MeshLambertMaterial({ color: 0x4a3a2c }), twigG = new THREE.CylinderGeometry(1, 1, 1, 5);
+    const twig = (a, b, r) => { const m = new THREE.Mesh(twigG, twigM), d = b.clone().sub(a); m.position.copy(a).addScaledVector(d, 0.5); m.scale.set(r, d.length(), r);
+      m.quaternion.setFromUnitVectors(UP, d.normalize()); m.castShadow = true; bushGroup.add(m); };
+    // a leafy clump on a branch that comes from a sapling standing away from the good lines (side: +1 left, -1 right)
+    const twigLeafM = new THREE.MeshLambertMaterial({ color: 0xa8c75a, emissive: 0x1c2410 });   // fresh leaves: the twig in front of the muzzle stands out
+    const clump = (c, r, side, sx = 1, mat = leafM) => { const m = new THREE.Mesh(leafG, mat); m.position.copy(c); m.scale.set(r * sx, r * 0.8, r); m.rotation.y = yawFwd; m.castShadow = true; bushGroup.add(m);
+      const foot = c.clone().addScaledVector(left, side * (0.9 + r)).addScaledVector(fwd, 0.4); foot.y = hAt(foot.x, foot.z);
+      const fork = foot.clone().setY(Math.max(c.y + 0.5, foot.y + 1.2)); twig(foot, fork, 0.035); twig(fork, c, 0.018); };
+    const lineAt = (eye, k, D) => { const e = eye.clone().addScaledVector(left, k * STEP3), d = SITE3.aim.clone().sub(e).normalize(); return e.addScaledVector(d, D); };
+    const bore0 = RL(V(0, 0, 0)), boreDir = RL(MUZZLE).sub(bore0).normalize();
+    clump(lineAt(scopeEye, -3, 4.5).addScaledVector(left, -0.02), 0.32, -1);                 // right 1.5 m: the scope almost covered
+    clump(lineAt(scopeEye, -3, 7.5).addScaledVector(left, 0.12), 0.22, -1);
+    clump(lineAt(scopeEye, -2, 6).addScaledVector(left, -0.1), 0.2, -1);                     // right 1 m: half of it
+    clump(lineAt(obsEye, 3, 4.5).addScaledVector(left, 0.02), 0.32, 1);                      // left 1.5 m: the spotting scope almost covered
+    clump(lineAt(obsEye, 3, 7.5).addScaledVector(left, -0.12), 0.22, 1);
+    clump(lineAt(obsEye, 2, 6).addScaledVector(left, 0.1), 0.2, 1);                          // left 1 m: half of it
+    for (const k of [-1, 1]) {                                                               // half a metre off: a twig under the line
+      const c = RL(MUZZLE).addScaledVector(left, k * STEP3).addScaledVector(boreDir, 1.6); c.y -= 0.03; clump(c, 0.11, k, 2.2, twigLeafM); }
+    clump(lineAt(scopeEye, 0, 7).addScaledVector(left, -0.21), 0.13, -1);                    // the good place: leaves at the edge
+    clump(lineAt(obsEye, 0, 8).addScaledVector(left, 0.2), 0.12, 1);
     scene.add(bushGroup);
   }
-  async function setSite(n, c) {
+  async function setSite(n, c, shift) {
     SITE = n; deckFall = null; withdraw = null;
     if (n === 3) {
-      fp.copy(g(SITE3.pair.clone())); fwd0.copy(SITE3.mid.clone().sub(fp).setY(0).normalize()); left0.set(fwd0.z, 0, -fwd0.x);
+      const base = g(SITE3.pair.clone()); fwd0.copy(SITE3.mid.clone().sub(base).setY(0).normalize()); left0.set(fwd0.z, 0, -fwd0.x);
       // concealment (author, 21 XI): no lane through the forest - only the trees standing on the pair's bodies and the
-      // few whose crown or trunk crosses the line of sight over the first 60 m go; bushes all around, with a narrow
-      // slit in front for the muzzle and the spotting scope
-      if (window.__sim && window.__sim.hideTreesNear) { window.__sim.restoreTrees(); window.__sim.hideTreesNear(fp.x, fp.z, 2.0);
-        const tr = window.__sim.trees, dx = SITE3.mid.x - fp.x, dz = SITE3.mid.z - fp.z, L = Math.hypot(dx, dz), ux = dx / L, uz = dz / L;
-        for (let i = 0; i < tr.length; i += 4) { const px = tr[i] - fp.x, pz = tr[i + 1] - fp.z, along = px * ux + pz * uz; if (along < -3 || along > 60) continue;
-          const h = tr[i + 3], cr = (h < 7 ? h * 0.28 : Math.max(1.2, h * 0.19)) * 1.15 + 0.3, perp = Math.abs(px * uz - pz * ux);
-          const lineY = 0.35 + along * (SITE3.aim.y - hAt(fp.x, fp.z)) / L, crownLow = h < 7 ? h * 0.2 : h * 0.54;   // the sight line is low under adult crowns
-          if (perp < 0.45 || (perp < cr && lineY > crownLow - 0.5) || (perp < 2.4 && along < 3 && along > -3)) window.__sim.hideTreesNear(tr[i], tr[i + 1], 0.3); } }
-      const range = Math.round(Math.hypot(SITE3.mid.x - fp.x, SITE3.mid.z - fp.z));
-      await setConditions({ ...(c || {}), range, bearing: 0, clock: 12 });
+      // few whose crown or trunk crosses the lines of sight over the first 60 m go (the good place's and the places
+      // half a metre to each side, shooter and observer); bushes all around, with a narrow slit for the scopes
+      if (window.__sim && window.__sim.hideTreesNear) { window.__sim.restoreTrees(); window.__sim.hideTreesNear(base.x + left0.x * 0.55, base.z + left0.z * 0.55, 3.6);
+        const tr = window.__sim.trees, dx = SITE3.mid.x - base.x, dz = SITE3.mid.z - base.z, L = Math.hypot(dx, dz), ux = dx / L, uz = dz / L, OFF = [-0.5, 0, 0.5, 0.6, 1.1, 1.6];
+        for (let i = 0; i < tr.length; i += 4) { const px = tr[i] - base.x, pz = tr[i + 1] - base.z, along = px * ux + pz * uz; if (along < -3 || along > 60) continue;
+          const h = tr[i + 3], cr = (h < 7 ? h * 0.28 : Math.max(1.2, h * 0.19)) * 1.15 + 0.3, sp = px * uz - pz * ux, perp = Math.min(...OFF.map(o => Math.abs(sp - o)));
+          const lineY = 0.35 + along * (SITE3.aim.y - hAt(base.x, base.z)) / L, crownLow = h < 7 ? h * 0.2 : h * 0.54;   // the sight line is low under adult crowns
+          if (perp < 0.45 || (perp < cr && lineY > crownLow - 0.5)) window.__sim.hideTreesNear(tr[i], tr[i + 1], 0.3); } }
       gong.visible = false; spotter.visible = false;
       if (!observer) { observer = soldier(gltf, animG.animations); observer.m.name = "observer";
         obsScope = (await loader.loadAsync("models/spotter60_prone.glb?v=" + window.SIM_V)).scene; obsScope.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(obsScope); }
       observer.m.visible = obsScope.visible = true;
-      // the observer lies 1.1 m left of the shooter, level with him, his scope in front of his face
-      const at = PRONE.clone().addScaledVector(left, 1.1); at.y = hAt(at.x, at.z);
-      placeSoldier(observer, at, yawFwd, [["Prone_Fire", 0.5, 1]]);
-      const sp = at.clone().addScaledVector(fwd, 1.55).addScaledVector(left, 0.05); sp.y = hAt(sp.x, sp.z);
-      obsScope.position.copy(sp); obsScope.rotation.set(0, yawFwd + Math.PI, 0);
-      bushes(true);                                                          // last: around the pair as it lies now
+      const place = async k => {
+        shift3 = k; fp.copy(g(base.clone().addScaledVector(left0, k * STEP3)));
+        const range = Math.round(Math.hypot(SITE3.mid.x - fp.x, SITE3.mid.z - fp.z));
+        await setConditions({ ...(c || {}), range, bearing: 0, clock: 12 });
+        // the observer lies 1.1 m left of the shooter, level with him, his scope in front of his face
+        const at = PRONE.clone().addScaledVector(left, 1.1); at.y = hAt(at.x, at.z);
+        placeSoldier(observer, at, yawFwd, [["Prone_Fire", 0.5, 1]]);
+        const sp = at.clone().addScaledVector(fwd, 1.55).addScaledVector(left, 0.05); sp.y = hAt(sp.x, sp.z);
+        obsScope.position.copy(sp); obsScope.rotation.set(0, yawFwd + Math.PI, 0); };
+      // the plants are laid out once, from the good place (the lines they keep clear are its), then the pair moves
+      if (!bushGroup) { await place(0); bushes(true); }
+      await place(shift ?? 0);
     } else {
       fp.copy(FP0); fwd0.copy(FWD0); left0.set(fwd0.z, 0, -fwd0.x);
       if (window.__sim && window.__sim.restoreTrees) window.__sim.restoreTrees();
-      gong.visible = true; spotter.visible = true; if (observer) observer.m.visible = obsScope.visible = false; bushes(false);
+      gong.visible = true; spotter.visible = true; if (observer) observer.m.visible = obsScope.visible = false; bushes(false); scopeFrom = "shooter"; shift3 = 0;
       if (c) await setConditions(c);
     }
     if (window.__redraw) window.__redraw.kick(1500);
@@ -1549,6 +1586,8 @@ export async function play(ctx) {
     for (const h of Object.values(handsMan.hands)) h.g.visible = c.kind !== "scope";   // hands at the turrets would sit in front of the eye
     kestrel.visible = kestrel.visible && c.kind !== "scope"; notebook.visible = notebook.visible && c.kind !== "scope";
     if (grass) grass.visible = c.kind !== "scope" && !(window.__quality && window.__quality.mode === "lo");   // prone eye is 0.37 m up, inside the grass tufts; no tufts in simple graphics
+    // site 3: the observer's spotting scope (author, 21 XI) - its own eyepiece, the scope model out of the way
+    if (obsScope && SITE === 3 && !withdraw) obsScope.visible = !(c.kind === "scope" && scopeFrom === "observer");
     if (c.kind === "scope") { setFocus(null); return scopeCamera(S.scope, T, recoil); }
     camera.fov = c.fov || 45;
     if (c.kind === "follow") {
@@ -1647,7 +1686,8 @@ export async function play(ctx) {
   function scopeCamera(sc, T, recoil) {
     const g_ = scopeGeom(sc.mag); lastScopeMag = sc.mag;
     camera.fov = g_.vfov; camera.updateProjectionMatrix();
-    const eye = rifle.localToWorld(EYE.clone());
+    const obsV = SITE === 3 && scopeFrom === "observer" && obsScope && observer && observer.m.visible;
+    const eye = obsV ? obsEyeW() : rifle.localToWorld(EYE.clone());
     const SLOW = 5;                                                   // sway runs 5x slower than first built (author, scene 14)
     const period = (sc.breathT || 4.2) * SLOW, br = sc.breath ?? 0.25;
     const pitch = (sc.pitch || 0) + br * Math.sin(2 * Math.PI * T / period) + br * 0.25 * Math.sin(2 * Math.PI * T / (1.3 * SLOW)) + recoil * 120 + (sc.wobble || 0) * 0.3;
@@ -1655,7 +1695,9 @@ export async function play(ctx) {
     if (sway) aimCur = aimNow();                                     // the trainee's shot: the reticle sways with the breath
     const ud = scopeDrag || { yaw: 0, pitch: 0 };                    // the trainee's own aim while measuring
     const sw = sway ? aimCur : [0, 0]; scopeAim = [(sc.yaw || 0) + ud.yaw, (sc.pitch || 0) + ud.pitch];
-    const dir = losDir.clone().addScaledVector(losRight, (yaw + ud.yaw + sw[0]) / 1000).addScaledVector(losUp, (pitch + ud.pitch + sw[1]) / 1000).normalize();
+    let lD = losDir, lR = losRight, lU = losUp;
+    if (obsV) { lD = GC.clone().sub(eye).normalize(); lR = V().crossVectors(lD, V(0, 1, 0)).normalize(); lU = V().crossVectors(lR, lD); }
+    const dir = lD.clone().addScaledVector(lR, (yaw + ud.yaw + sw[0]) / 1000).addScaledVector(lU, (pitch + ud.pitch + sw[1]) / 1000).normalize();
     camera.position.copy(eye); camera.up.set(0, 1, 0); camera.lookAt(eye.clone().add(dir));
   }
 
@@ -1723,7 +1765,14 @@ export async function play(ctx) {
     catch (e) { console.error("task", e); } finally { if (veil) veil.remove(); panel.setOverride(null); taskOn = false; if (window.showWelcome && document.documentElement.classList.contains("app")) window.showWelcome(); } }   // back to the menu   // sound needs a click first: the scene starts on it
   window.__demo = { COL, runTask: (...a) => runTask(...a), tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt,
     setConditions, sightBlocked, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; },
-    setWithdraw, get targetDown() { return !!deckFall; }, setCam: c => { window.__dbgCam = c; if (window.__redraw) window.__redraw.kick(800); }, setSite, deckWalk: t => deckWalk(t ?? deckT), get site3() { return SITE3; }, setTargets, activateTarget, setCardTargets: list => { CARD_PREV = list || []; }, setRounds: n => { NR = n; }, aimNudge, setAimHold: on => { holding = !!on; }, breathChart: on => { chartOn = !!on; drawChart(); }, fireLive, getDial: () => ({ elev: ELEV, wind: WIND }), setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
+    setWithdraw, get targetDown() { return !!deckFall; }, get shift3() { return shift3; }, setScopeEye: w => { scopeFrom = w === "observer" ? "observer" : "shooter"; },
+    // beside the barrel, along it: what lies in front of the muzzle (site 3, the twig under the line)
+    barrelCam: () => ({ p: RL(V(0.15, 0.04, -0.95)), t: RL(V(0, -0.02, -2.9)), fov: 30 }),
+    // the bullet's way out of the muzzle, a thin yellow line over the first 8 m (shown with the barrel view)
+    showBoreLine: on => { if (boreLine) { scene.remove(boreLine); boreLine = null; } if (!on) return;
+      const a = RL(MUZZLE), d = RL(MUZZLE).sub(RL(V(0, 0, 0))).normalize(), L = 8;
+      boreLine = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, L, 6), new THREE.MeshBasicMaterial({ color: 0xffd84d }));
+      boreLine.position.copy(a).addScaledVector(d, L / 2); boreLine.quaternion.setFromUnitVectors(V(0, 1, 0), d); scene.add(boreLine); }, setCam: c => { window.__dbgCam = c; if (window.__redraw) window.__redraw.kick(800); }, setSite, deckWalk: t => deckWalk(t ?? deckT), get site3() { return SITE3; }, setTargets, activateTarget, setCardTargets: list => { CARD_PREV = list || []; }, setRounds: n => { NR = n; }, aimNudge, setAimHold: on => { holding = !!on; }, breathChart: on => { chartOn = !!on; drawChart(); }, fireLive, getDial: () => ({ elev: ELEV, wind: WIND }), setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
   { const kick = () => window.__redraw && window.__redraw.kick(600);
     for (const k of ["seek", "holdAt", "play", "pause", "playRange", "cancelRange"]) { const f = tl[k].bind(tl); tl[k] = (...a) => { kick(); return f(...a); }; }
     for (const [k, v] of Object.entries(Object.getOwnPropertyDescriptors(window.__demo))) if (typeof v.value === "function") {

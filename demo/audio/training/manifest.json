@@ -404,6 +404,13 @@
    "duration": 5.52
   }
  ],
+ "s3_pos": [
+  {
+   "file": "s3_pos.0.mp3",
+   "speaker": "narrator",
+   "duration": 9.12
+  }
+ ],
  "s3_find": [
   {
    "file": "s3_find.0.mp3",

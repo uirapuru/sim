@@ -190,6 +190,12 @@ const fmt = v => (Math.round(v * 10) / 10).toFixed(1).replace(".", ",");
 function scenario3Steps() {
   const by = id => STEPS.find(s => s.id === id);
   return [
+    // the place first (author, 21 XI): from where the pair lies the stand is half hidden, or a twig hangs in front of
+    // the muzzle; half a metre at a time to the left or right until both scopes see the instructor and the bullet's
+    // way is clear (the runner puts the pair 1-3 moves away from the good place)
+    { id: "s3_pos", chapter: by("scan").chapter, kind: "position", voice: "s3_pos", hold: { key: "s15.trigger", u: 0.6 }, play: [],
+      ask: "Sprawdźcie stanowisko: obraz w lunecie strzelca i obserwatora oraz tor pocisku przed lufą. Przesuńcie się albo zostańcie.",
+      hint: "Dobre miejsce: obie lunety widzą instruktora, a przed lufą nic nie wisi. Przesuń się w stronę, z której obraz jest czystszy." },
     { ...by("scan"), id: "s3_find", baseId: "scan", voice: "s3_find", play: ["s09.why"], ask: "Jesteś obserwatorem. Znajdź w lunecie instruktora na trybunie i najedź na niego krzyżem.",
       hint: "Trybuna jest daleko, za przecinką w lesie. Instruktor chodzi po pomoście i staje w jego narożniku." },
     { ...by("height"), id: "s3_height", baseId: "height", voice: "s3_height", answer: c => 1800 / c.range, tol: 0.2, play: ["s09.height"],

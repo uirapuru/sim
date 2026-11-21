@@ -74,7 +74,9 @@ export async function startTask(mode, ctx, opts = {}) {
   try {
   await demo.setConditions(c); demo.setKestrelInset(c);
   // scenario 3: the pair in the forest; the range is the site's, the clock 12
-  if (scenario === 3) { await demo.setSite(3, c); c = { ...c, range: demo.cond.range, bearing: 0, clock: 12 }; demo.setKestrelInset(c); }
+  // scenario 3: the pair starts 1-3 half-metre moves to the left or right of the good place (author, 21 XI)
+  const start3 = opts.start3 ?? (Math.random() < 0.5 ? -1 : 1) * (1 + Math.floor(Math.random() * 3));
+  if (scenario === 3) { await demo.setSite(3, c, start3); c = { ...c, range: demo.cond.range, bearing: 0, clock: 12 }; demo.setKestrelInset(c); }
   let curT = null; if (targets) { demo.setTargets(targets); demo.setRounds(6); curT = 0; await demo.activateTarget(0, c); }
   // scenario 2: six rounds for the three targets; when they run out, the targets left are skipped
   let ammo = targets ? 6 : Infinity, outOfAmmoAt = null;
@@ -177,6 +179,31 @@ export async function startTask(mode, ctx, opts = {}) {
         ok.onclick = submit; inp.onkeydown = e => { if (e.key === "Enter") submit(); };
         const lab = document.createElement("div"); lab.className = "dragTip"; lab.textContent = "Prędkość:"; const lab2 = document.createElement("div"); lab2.className = "dragTip"; lab2.textContent = "Skąd wieje:";
         view.body.append(lab, inp, unit, lab2, box, ok); setTimeout(() => inp.focus(), 50);
+      } else if (st.kind === "position") {
+        // three views to look through, three decisions; a move takes the pair half a metre aside (scene1 setSite)
+        let k = demo.shift3, moves = 0, busy = false;
+        const trouble = k => k <= -2 ? "W lunecie strzelca gałęzie zasłaniają trybunę." : k >= 2 ? "W lunecie obserwatora gałęzie zasłaniają trybunę."
+          : k !== 0 ? "Obraz jest, ale przed lufą, na torze pocisku, wisi gałązka – zobacz widok wzdłuż lufy." : "";
+        const VIEWS = [["Luneta strzelca", () => { demo.showBoreLine(false); demo.setCam(null); demo.setScopeEye("shooter"); tl.holdAt("s15.trigger", 0.6); }],
+          ["Luneta obserwatora", () => { demo.showBoreLine(false); demo.setCam(null); demo.setScopeEye("observer"); tl.holdAt("s09.why", 0.5); }],
+          ["Wzdłuż lufy", () => { demo.setScopeEye("shooter"); tl.holdAt("s14.cmd", 0.5); demo.setCam(demo.barrelCam()); demo.showBoreLine(true); }]];
+        let view_ = 0; const vb = document.createElement("div"); vb.className = "choices";
+        const showView = i => { view_ = i; [...vb.children].forEach((b, j) => b.classList.toggle("on", j === i)); VIEWS[i][1](); };
+        VIEWS.forEach(([t], i) => { const b = document.createElement("button"); b.textContent = t; b.onclick = () => showView(i); vb.append(b); });
+        const lab = document.createElement("div"); lab.className = "dragTip"; lab.textContent = "Widok:";
+        const lab2 = document.createElement("div"); lab2.className = "dragTip"; lab2.textContent = "Decyzja:";
+        const db = document.createElement("div"); db.className = "choices";
+        const move = async d => { if (busy) return; const nk = k + d, txt = d > 0 ? "Pół metra w lewo" : "Pół metra w prawo";
+          if (Math.abs(nk) > 3) { view.feedback("Dalej gęste krzaki – tam nie ma miejsca na stanowisko.", "info"); return; }
+          if (Math.abs(nk) > Math.abs(k)) { if (exam) { finish({ ok: false, given: txt }); return; } misses++; firstWrong ??= txt; }
+          busy = true; view.feedback(`Przesuwacie się ${d > 0 ? "w lewo" : "w prawo"}…`, "info"); await demo.setSite(3, c, nk); k = nk; moves++; busy = false; if (done) return;
+          showView(view_); view.feedback(`Nowe miejsce (${moves}. przesunięcie). Sprawdź widoki.`, "info"); };
+        const stay = () => { if (busy) return; const txt = "Zostajemy tutaj";
+          if (k === 0) { right(moves ? `stanowisko po ${moves} ${moves === 1 ? "przesunięciu" : "przesunięciach"}` : txt); return; }
+          if (exam) { finish({ ok: false, given: txt }); return; } misses++; firstWrong ??= txt; view.feedback("Nie tym razem. " + trouble(k), "bad"); };
+        for (const [t, f] of [["Pół metra w lewo", () => move(1)], ["Pół metra w prawo", () => move(-1)], ["Zostajemy tutaj", stay]]) { const b = document.createElement("button"); b.textContent = t; b.onclick = f; db.append(b); }
+        view.body.append(lab, vb, lab2, db); showView(0);
+        extraCleanup = () => { demo.showBoreLine(false); demo.setCam(null); demo.setScopeEye("shooter"); };
       } else if (st.kind === "choice") {
         const box = document.createElement("div"); box.className = "choices";
         for (const o of choiceOptions(st, c)) { const b = document.createElement("button"); b.textContent = o; b.onclick = () => checkChoice(st, o, c) ? right(o) : wrong(o); box.append(b); }
@@ -269,6 +296,7 @@ export async function startTask(mode, ctx, opts = {}) {
   const correctText = st => { const c = cAt.get(st.id) || c0;
     if (st.kind === "action") return st.anywhere ? st.action : `${demo.nameOf(st.target)} → ${st.action}`;
     if (st.kind === "choice") return resolve(st.correct, c);
+    if (st.kind === "position") return "miejsce, z którego obie lunety widzą instruktora, a tor pocisku jest wolny";
     if (st.kind === "number") { const a = resolve(st.answer, c); return `${st.unit === "m" ? Math.round(a) : f1(a)} ${st.unit}`; }
     if (st.kind === "mark") return st.angleOnly ? `kierunek: godzina ${c.clock ?? 12}` : `cel na łuku ${c.range} m, na godzinie ${c.clock ?? 12}`;
     if (st.kind === "wind") return `${f1(c.wind)} m/s, ${resolve(st.correct, c).toLowerCase()}`;
@@ -295,6 +323,7 @@ export async function startTask(mode, ctx, opts = {}) {
     tl.holdAt(hold.key, hold.u); demo.setQuiz(true);
     const a = await ask(st, i, steps.length);
     demo.setQuiz(false);
+    if (st.kind === "position" && demo.shift3 !== 0) await demo.setSite(3, c, 0);   // the exam's wrong answer: the rest from the good place
     if (a && a.ok && !exam) await new Promise(r => setTimeout(r, 650));   /* let the green "Dobrze." be seen */
     ui.hideBar();
     if (!a) break;
@@ -306,7 +335,7 @@ export async function startTask(mode, ctx, opts = {}) {
     // the question has just said the range command in the instructor's voice: the beat does not say it again
     const saidCmd = !(exam && st.kind === "action") && /^Komenda:/.test(typeof st.ask === "string" ? st.ask : "");   // the exam hides action questions
     tl.skipVoice = new Set(saidCmd ? [st.play[0]] : []);
-    animT0 = performance.now(); await tl.playRange(st.play[0], st.play[st.play.length - 1]); animT0 = null; tl.skipVoice = new Set();
+    if (st.play.length) { animT0 = performance.now(); await tl.playRange(st.play[0], st.play[st.play.length - 1]); animT0 = null; } tl.skipVoice = new Set();   // no animation after some steps (scenario 3, the place)
     if (stopped || timedOut) break;
   }
   clearInterval(tick);
