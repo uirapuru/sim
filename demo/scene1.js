@@ -1711,9 +1711,9 @@ export async function play(ctx) {
     document.getElementById("lessonSide")?.classList.remove("open"); const tg = document.getElementById("sideToggle"); if (tg) tg.textContent = "☰";
     let veil = null;
     try { if (mode === "show3" || mode === "show2") {   // lessons of scenarios 2 and 3
-        // a dark cover with the lesson's name until its first shot is set: no frame of lesson 1 in between (author, 21 XI)
+        // a cover with the lesson's name until its first shot is set: no frame of lesson 1 in between (author, 21 XI)
         const name = mode === "show3" ? "Lekcja 3: para strzelec–obserwator" : "Lekcja 2: trzy cele";
-        veil = document.createElement("div"); veil.style.cssText = "position:fixed;inset:0;z-index:117;background:#0d0f11;display:grid;place-items:center;color:#f2c94c;font:600 20px system-ui;text-align:center;padding:20px";
+        veil = document.createElement("div"); veil.style.cssText = "position:fixed;inset:0;z-index:117;background:linear-gradient(180deg, rgba(8,10,12,.72) 0%, rgba(8,10,12,.35) 40%, rgba(8,10,12,.82) 100%), url(welcome.jpg) center / cover no-repeat #1b1f23;display:grid;place-items:center;color:#f2c94c;font:600 22px system-ui;text-align:center;padding:20px;text-shadow:0 2px 8px #000";   // the welcome screen's picture: the Kijewo stand and the sniper (author, 21 XI)
         veil.innerHTML = `${name}<div style="color:#aaa;font:14px system-ui;margin-top:8px">Wczytywanie…</div>`; document.body.append(veil);
         panel.setOverride(name);
         const ready = () => { if (veil) { veil.remove(); veil = null; } };
