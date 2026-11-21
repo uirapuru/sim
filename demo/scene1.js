@@ -787,6 +787,24 @@ export async function play(ctx) {
         return p.distanceTo(a.clone().lerp(b, t).setY(p.y)) < rad * 1.3 + 0.35; })) continue;
       const b = new THREE.Mesh(geo, rnd() < 0.5 ? mat : mat2); b.position.set(p.x, hAt(p.x, p.z) - 0.05, p.z); b.scale.set(rad, hgt, rad * (0.8 + rnd() * 0.4)); b.rotation.y = rnd() * 6.28;
       b.castShadow = b.receiveShadow = true; bushGroup.add(b); }
+    // denser undergrowth further out and young trees around (author, 21 XI: in the shots the pair seemed to lie in the
+    // open - the forest from the map is sparse here); none within reach of the two sight lines
+    const clear = (p, r) => !sightLines.some(([a, b]) => { const ab = b.clone().sub(a).setY(0), t = Math.max(0, p.clone().sub(a).setY(0).dot(ab) / ab.lengthSq());
+      return p.distanceTo(a.clone().lerp(b, t).setY(p.y)) < r; });
+    for (let k = 0; k < 70; k++) {
+      const ang = rnd() * Math.PI * 2, d = 6 + rnd() * 10, p = mid.clone().addScaledVector(fwd.clone().multiplyScalar(Math.cos(ang)).addScaledVector(left, Math.sin(ang)), d);
+      const hgt = 0.6 + rnd() * 1.0, rad = 0.6 + rnd() * 0.9; if (!clear(p, rad * 1.3 + 0.4)) continue;
+      const b = new THREE.Mesh(geo, rnd() < 0.5 ? mat : mat2); b.position.set(p.x, hAt(p.x, p.z) - 0.05, p.z); b.scale.set(rad, hgt, rad * (0.8 + rnd() * 0.4)); b.rotation.y = rnd() * 6.28;
+      b.castShadow = b.receiveShadow = true; bushGroup.add(b); }
+    const trunkG = new THREE.CylinderGeometry(0.06, 0.1, 1, 5); trunkG.translate(0, 0.5, 0);
+    const crownG = new THREE.ConeGeometry(1, 1, 7); crownG.translate(0, 0.5, 0);
+    const trunkM = new THREE.MeshLambertMaterial({ color: 0x5b4636 }), crownM = new THREE.MeshLambertMaterial({ color: 0x2f4a26 }), crownM2 = new THREE.MeshLambertMaterial({ color: 0x3a5530 });
+    for (let k = 0; k < 40; k++) {
+      const ang = rnd() * Math.PI * 2, d = 3 + rnd() * 12, p = mid.clone().addScaledVector(fwd.clone().multiplyScalar(Math.cos(ang)).addScaledVector(left, Math.sin(ang)), d);
+      const h = 3 + rnd() * 5, cr = 0.7 + h * 0.12; if (!clear(p, cr + 0.6)) continue;
+      const y = hAt(p.x, p.z), t = new THREE.Mesh(trunkG, trunkM); t.position.set(p.x, y - 0.1, p.z); t.scale.set(1 + h * 0.08, h * 0.45, 1 + h * 0.08);
+      const c = new THREE.Mesh(crownG, rnd() < 0.5 ? crownM : crownM2); c.position.set(p.x, y + h * 0.3, p.z); c.scale.set(cr, h * 0.72, cr); c.rotation.y = rnd() * 6.28;
+      t.castShadow = c.castShadow = true; c.receiveShadow = true; bushGroup.add(t, c); }
     scene.add(bushGroup);
   }
   async function setSite(n, c) {
