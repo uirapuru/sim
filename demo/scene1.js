@@ -1647,7 +1647,7 @@ export async function play(ctx) {
   // a choice made while the scene was loading starts now
   window.__welcomeProgress && window.__welcomeProgress(1);
   window.__welcomeAct = (mode, scenario) => { snd.unlock(); tl.ac.resume();
-    if (mode === "lesson") { if (scenario === 3) runTask("show3"); else { tl.seek(0); tl.play(); } return; }
+    if (mode === "lesson") { if (scenario === 3 || scenario === 2) runTask("show" + scenario); else { tl.seek(0); tl.play(); } return; }
     runTask(mode, { scenario }); };
   window.__welcomeStop = () => { if (taskOn) location.reload(); else tl.pause(); };   // back to the menu: a running task is left by a reload
   if (window.__welcomePending) { const a = window.__welcomePending; window.__welcomePending = null; document.getElementById("welcome")?.classList.add("hidden"); document.getElementById("menuBtn")?.classList.add("on"); window.__welcomeAct(...a); }
@@ -1657,7 +1657,7 @@ export async function play(ctx) {
   async function runTask(mode, opts) {
     if (taskOn) return; taskOn = true; snd.unlock(); tl.ac.resume(); document.getElementById("startVeil")?.remove();
     document.getElementById("lessonSide")?.classList.remove("open"); const tg = document.getElementById("sideToggle"); if (tg) tg.textContent = "☰";
-    try { if (mode === "show3") { const { startShow } = await import("./scene3show.js" + ver); await startShow({ tl, panel, demo: window.__demo }); return; }   // scenario 3 demonstration
+    try { if (mode === "show3" || mode === "show2") { const { startShow } = await import(`./scene${mode[4]}show.js` + ver); await startShow({ tl, panel, demo: window.__demo }); return; }   // lessons of scenarios 2 and 3
       const [{ startTask }, tab] = await Promise.all([import("./training/runner.js" + ver), fetch("demo/ballistics_table.json" + ver).then(r => r.json())]);
       await startTask(mode, { tl, panel, demo: window.__demo, tab, canvas: ctx.renderer.domElement, chapterTitles: SCENES }, opts); }
     catch (e) { console.error("task", e); } finally { taskOn = false; if (window.showWelcome && document.documentElement.classList.contains("app")) window.showWelcome(); } }   // back to the menu   // sound needs a click first: the scene starts on it

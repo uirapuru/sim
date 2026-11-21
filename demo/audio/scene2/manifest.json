@@ -1,0 +1,62 @@
+{
+ "n1": {
+  "file": "n1.mp3",
+  "who": "narrator",
+  "duration": 10.96,
+  "text": "Scenariusz drugi: trzy cele. Przed strzelcem stoją trzy gongi na różnych odległościach. Strzela od najbliższego do najdalszego, po dwa strzały na każdy cel."
+ },
+ "n2": {
+  "file": "n2.mp3",
+  "who": "narrator",
+  "duration": 6.48,
+  "text": "Najpierw wyszukuje wszystkie cele w lunecie, przy najmniejszym powiększeniu. Dopiero potem zaczyna mierzyć."
+ },
+ "n3": {
+  "file": "n3.mp3",
+  "who": "narrator",
+  "duration": 10.0,
+  "text": "Każdy cel mierzy z jego wysokości. Gong ma metr wysokości. Metr razy tysiąc, podzielone przez odczyt w milach, daje odległość."
+ },
+ "n4": {
+  "file": "n4.mp3",
+  "who": "narrator",
+  "duration": 5.36,
+  "text": "Wiatr czyta z Kestrela. Ten sam wiatr wchodzi do nastaw na wszystkie trzy cele."
+ },
+ "n5": {
+  "file": "n5.mp3",
+  "who": "narrator",
+  "duration": 6.8,
+  "text": "Kierunek do każdego celu ocenia na oko. Linia pokazuje godzinę dwunastą, czyli oś stanowiska."
+ },
+ "n6": {
+  "file": "n6.mp3",
+  "who": "narrator",
+  "duration": 5.68,
+  "text": "Wszystkie trzy cele nanosi na kartę ognia. Na karcie liczy się przede wszystkim kierunek."
+ },
+ "n7": {
+  "file": "n7.mp3",
+  "who": "narrator",
+  "duration": 9.84,
+  "text": "Teraz strzela. Zaczyna od najbliższego celu: paralaksa, nastawy z tabel na jego odległość i wiatr, potem dwa strzały w pauzie po wydechu."
+ },
+ "n8": {
+  "file": "n8.mp3",
+  "who": "narrator",
+  "duration": 8.16,
+  "text": "Drugi cel: nowa odległość, więc nowe nastawy. Strzelec ma przed oczami kartę ognia z danymi wszystkich celów."
+ },
+ "n9": {
+  "file": "n9.mp3",
+  "who": "narrator",
+  "duration": 6.16,
+  "text": "Trzeci, najdalszy cel. Podniesienie rośnie najbardziej, bo pocisk opada coraz szybciej."
+ },
+ "n10": {
+  "file": "n10.mp3",
+  "who": "narrator",
+  "duration": 9.04,
+  "text": "Koniec zadania. Cel jest trafiony, gdy oba strzały trafią. Po dwóch strzałach strzelec przechodzi do następnego celu bez względu na wynik."
+ }
+}
