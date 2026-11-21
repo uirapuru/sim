@@ -95,11 +95,29 @@
   "duration": 1.52,
   "text": "Cel zlikwidowany."
  },
+ "d17": {
+  "file": "d17.mp3",
+  "who": "spotter",
+  "duration": 3.44,
+  "text": "Zbieramy łuskę i sprzęt. Nie zostawiamy śladów."
+ },
+ "d18": {
+  "file": "d18.mp3",
+  "who": "shooter",
+  "duration": 2.64,
+  "text": "Łuska zebrana, sprzęt spakowany."
+ },
+ "n5": {
+  "file": "n5.mp3",
+  "who": "narrator",
+  "duration": 11.36,
+  "text": "Zanim się ruszą, strzelec podnosi łuskę, a obserwator zabiera lunetę i notatnik. Zacierają ślady stanowiska: nie może zostać nic, co zdradzi, skąd padł strzał."
+ },
  "n6": {
   "file": "n6.mp3",
   "who": "narrator",
-  "duration": 7.04,
-  "text": "Pierwszy strzał trafia, cel pada. Para nie czeka: wycofuje się czołgając, nisko, w głąb lasu."
+  "duration": 4.32,
+  "text": "Potem wycofują się czołgając, nisko, w głąb lasu."
  },
  "t_ready": {
   "file": "t_ready.mp3",

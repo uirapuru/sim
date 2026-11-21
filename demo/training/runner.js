@@ -231,7 +231,7 @@ export async function startTask(mode, ctx, opts = {}) {
           if (st.whenStopped && !demo.deckWalk().stop) { moving++; view.feedback("Instruktor idzie: strzał tylko na „Ognia.”, gdy stoi.", "bad"); demo.setAimHold(false); return; }
           busy = true; demo.breathChart(false);
           const r = await demo.fireLive(st.shots[k]); if (done) return; res.push(r); k++; ammo--; c.lastHit = r.hit;
-          if (st.whenStopped && r.hit) { view.feedback("Obserwator: Cel zlikwidowany.", "ok"); say3("d16"); }
+          if (st.whenStopped && r.hit) { view.feedback("Obserwator: Cel zlikwidowany. Zbieramy łuskę i sprzęt, nie zostawiamy śladów.", "ok"); say3("d16").then(() => say3("d17")); }
           if (st.stop) count.textContent = `Cel nr ${st.tgt + 1} · trafienia ${nHit()}/${st.stop.hits} · pudła ${nMiss()}/${st.stop.misses} · naboje: ${ammo}`;   // the score at once
           if (over()) { demo.setAimSway(false); if (st.last !== false) demo.setKestrelInset(null);   // after the very last shot the Kestrel goes away
             const hits = res.filter(x => x.hit).length;

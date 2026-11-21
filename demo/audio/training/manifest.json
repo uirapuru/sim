@@ -460,6 +460,13 @@
    "duration": 3.6
   }
  ],
+ "s3_clear": [
+  {
+   "file": "s3_clear.0.mp3",
+   "speaker": "narrator",
+   "duration": 3.68
+  }
+ ],
  "_next": [
   {
    "file": "_next.0.mp3",

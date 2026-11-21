@@ -139,7 +139,7 @@ test("scenario 2: find all, measure all (height only), directions, card, then sh
 test("scenario 3: spotter, shooter, spotter; the dialogue follows the trainee's own settings", async () => {
   const { scenarioSteps, DIALOG3, SCENARIOS } = await import("./steps_scene1.js");
   const s3 = scenarioSteps(3);
-  assert.deepEqual(s3.map(s => s.id), ["s3_find", "s3_height", "s3_range", "s3_wind", "s3_dial", "s3_dialog", "s3_shot", "s3_judge"]);
+  assert.deepEqual(s3.map(s => s.id), ["s3_find", "s3_height", "s3_range", "s3_wind", "s3_dial", "s3_dialog", "s3_shot", "s3_judge", "s3_clear"]);
   assert.equal(SCENARIOS.length, 3);
   const L = DIALOG3({ range: 593, ownRange: 600, call: { elev: 6.0, wind: -1.3 } });
   assert.deepEqual(L.slice(0, 3), ["Cel: człowiek na trybunie, dystans 600. Potwierdź cel.", "Podniesienie: 6,0 milsa.", "Wiatr: 1,3 milsa w prawo."]);

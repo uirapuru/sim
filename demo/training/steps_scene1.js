@@ -208,6 +208,10 @@ function scenario3Steps() {
     { id: "s3_judge", chapter: 16, kind: "choice", voice: "s3_judge", hold: { key: "s06.cheek", u: 0.5 }, play: ["s06.cheek"],
       options: ["Trafienie.", "Pudło."], correct: c => c.lastHit ? "Trafienie." : "Pudło.",
       ask: "Jesteś znów obserwatorem. Oceń ostatni strzał.", hint: "W lunecie obserwacyjnej widać, czy pocisk doszedł do celu. Gdy instruktor przerwał chodzenie po strzale – trafienie." },
+    { id: "s3_clear", chapter: 16, kind: "choice", voice: "s3_clear", hold: { key: "s14.cmd", u: 0.5 }, play: ["s14.cmd"],
+      options: ["Zabieramy łuskę i cały sprzęt, zacieramy ślady i wycofujemy się w głąb lasu.", "Zostajemy na stanowisku i obserwujemy trybunę.", "Odchodzimy od razu, łuska może zostać."],
+      correct: () => "Zabieramy łuskę i cały sprzęt, zacieramy ślady i wycofujemy się w głąb lasu.",
+      ask: "Strzał oddany. Co robi para, zanim odejdzie?", hint: "Para nie zostawia śladów: łuska, sprzęt i notatki idą z nią, stanowisko zatarte. Zostając, ryzykuje wykrycie." },
   ];
 }
 

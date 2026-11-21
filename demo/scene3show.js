@@ -56,6 +56,9 @@ export async function startShow({ tl, panel, demo }) {
     await say("d11"); await say("d12"); if (stopped) return;
     const r1 = await demo.fireLive(0); await wait(400);
     if (r1.hit) await say("d16"); else note("Pudło – w treningu obserwator poda poprawkę");
+    // nothing stays behind: the case and the kit go with them (author, 21 XI)
+    tl.holdAt("s14.cmd", 0.5); demo.setKestrelInset(null); demo.setCam(pairCam); note("Łuska, sprzęt, notatki – nic nie zostaje");
+    await say("d17"); await say("d18"); await say("n5"); note("");
     // the withdrawal: crawling back into the forest, then on foot, gone among the trees (author, 21 XI)
     demo.setCam(null); tl.holdAt("s14.cmd", 0.5); demo.setKestrelInset(null);
     const back = fp.clone().sub(s3.aim).setY(0).normalize(), sideW = { x: -back.z, z: back.x };
