@@ -812,7 +812,7 @@ export async function play(ctx) {
     if (bushGroup) { scene.remove(bushGroup); bushGroup = null; } if (!on) return;
     bushGroup = new THREE.Group(); let r_ = 11; const rnd = () => (r_ = (r_ * 16807) % 2147483647) / 2147483647;
     const geo = new THREE.IcosahedronGeometry(1, 1); { const p = geo.attributes.position; for (let i = 0; i < p.count; i++) { const n = 0.8 + 0.3 * Math.sin(p.getX(i) * 7 + p.getZ(i) * 5) * Math.cos(p.getY(i) * 6); p.setXYZ(i, p.getX(i) * n, (p.getY(i) * 0.5 + 0.5) * n, p.getZ(i) * n); } geo.computeVertexNormals(); }
-    const mat = new THREE.MeshLambertMaterial({ color: 0x3f5a2c }), mat2 = new THREE.MeshLambertMaterial({ color: 0x4d6233 });
+    // (colours per instance below)
     const mid = PRONE.clone().addScaledVector(left, 0.55);                     // between the shooter and the observer
     const scopeEye = RL(EYE), obsEye = obsScope ? obsScope.position.clone() : scopeEye.clone().addScaledVector(left, 1.1);
     const sightLines = [[scopeEye, SITE3.aim.clone()], [obsEye, SITE3.aim.clone()]];
@@ -820,33 +820,40 @@ export async function play(ctx) {
       return p.distanceTo(a.clone().lerp(b, t).setY(p.y)); };
     // the lane of the withdrawal (50 m straight back), kept open so the lesson's camera sees them crawl
     const lane = [mid.clone().addScaledVector(fwd, -1.5), mid.clone().addScaledVector(fwd, -52)];
-    const clear = (p, r) => !sightLines.some(([a, b]) => near(p, a, b.clone().lerp(a, -10)) < r) && near(p, lane[0], lane[1]) > r + 0.4;
-    for (let k = 0; k < 46; k++) {
-      const ang = rnd() * Math.PI * 2, d = 1.8 + rnd() * 4.2, front = Math.cos(ang), side = Math.sin(ang);
-      const dir = fwd.clone().multiplyScalar(front).addScaledVector(left, side);
-      const p = mid.clone().addScaledVector(dir, d), hgt = 0.7 + rnd() * 0.7, rad = 0.5 + rnd() * 0.6;
-      // the slit: no bush within reach of the shooter's or the observer's line of sight
-      if (sightLines.some(([a, b]) => { const ab = b.clone().sub(a).setY(0), t = Math.max(0, p.clone().sub(a).setY(0).dot(ab) / ab.lengthSq());
-        return p.distanceTo(a.clone().lerp(b, t).setY(p.y)) < rad * 1.3 + 0.35; })) continue;
-      if (near(p, lane[0], lane[1]) < rad + 0.5) continue;
-      const b = new THREE.Mesh(geo, rnd() < 0.5 ? mat : mat2); b.position.set(p.x, hAt(p.x, p.z) - 0.05, p.z); b.scale.set(rad, hgt, rad * (0.8 + rnd() * 0.4)); b.rotation.y = rnd() * 6.28;
-      b.castShadow = b.receiveShadow = true; bushGroup.add(b); }
-    // denser undergrowth further out and young trees around (author, 21 XI: in the shots the pair seemed to lie in the
-    // open - the forest from the map is sparse here); none within reach of the two sight lines
-    for (let k = 0; k < 70; k++) {
-      const ang = rnd() * Math.PI * 2, d = 6 + rnd() * 10, p = mid.clone().addScaledVector(fwd.clone().multiplyScalar(Math.cos(ang)).addScaledVector(left, Math.sin(ang)), d);
-      const hgt = 0.6 + rnd() * 1.0, rad = 0.6 + rnd() * 0.9; if (!clear(p, rad * 1.3 + 0.4)) continue;
-      const b = new THREE.Mesh(geo, rnd() < 0.5 ? mat : mat2); b.position.set(p.x, hAt(p.x, p.z) - 0.05, p.z); b.scale.set(rad, hgt, rad * (0.8 + rnd() * 0.4)); b.rotation.y = rnd() * 6.28;
-      b.castShadow = b.receiveShadow = true; bushGroup.add(b); }
+    // concealment (author, 21 XI, second pass: from the stand the pair showed through a lane cut in the undergrowth).
+    // Only the thin tube the scope and the muzzle look through stays open: a bush in front is cut down to just under
+    // it (low bushes hide the bodies), a tree goes only if its trunk stands in it or its crown hangs into it.
+    const along = (p, a, b) => { const ab = b.clone().sub(a).setY(0), L = ab.length(), t = p.clone().sub(a).setY(0).dot(ab) / (L * L);
+      const tc = Math.max(0, t); return { ahead: t * L, perp: p.distanceTo(a.clone().lerp(b, tc).setY(p.y)), y: a.y + (b.y - a.y) * tc }; };
+    const fitH = (p, rad, hgt) => { let h = hgt; const gy = hAt(p.x, p.z);
+      for (const [a, b] of sightLines) { const l = along(p, a, b); if (l.ahead < -0.4 || l.perp > rad + 0.25) continue; h = Math.min(h, (l.y - 0.1 - gy) / 1.1); }
+      return h; };
+    const treeOk = (p, h, cr) => { const gy = hAt(p.x, p.z);
+      return sightLines.every(([a, b]) => { const l = along(p, a, b); if (l.ahead < -0.6) return true;
+        return l.perp > 0.45 && (l.perp > cr + 0.25 || gy + 0.3 * h > l.y + 0.35); }); };
+    const offLane = (p, r) => near(p, lane[0], lane[1]) > r + 0.4;
+    const ring = (d0, d1, spread = Math.PI) => { const ang = (rnd() * 2 - 1) * spread, d = d0 + rnd() * (d1 - d0);
+      return mid.clone().addScaledVector(fwd.clone().multiplyScalar(Math.cos(ang)).addScaledVector(left, Math.sin(ang)), d); };
+    // all as instances: hundreds of plants in four draw calls
+    const B = [], T = [];
+    const bush = (p, rad, hgt, minH) => { const h = fitH(p, rad, hgt); if (h < minH || !offLane(p, rad)) return; B.push([p, rad, h, rnd()]); };
+    for (let k = 0; k < 60; k++) bush(ring(1.8, 6), 0.5 + rnd() * 0.6, 0.7 + rnd() * 0.7, 0.18);            // around the pair
+    for (let k = 0; k < 70; k++) bush(ring(1.2, 16, 0.5), 0.45 + rnd() * 0.5, 0.3 + rnd() * 0.5, 0.12);     // low bushes in front, under the slit
+    for (let k = 0; k < 190; k++) bush(ring(6, 26), 0.6 + rnd() * 0.9, 0.6 + rnd() * 1.0, 0.2);             // undergrowth
+    for (let k = 0; k < 220; k++) { const p = ring(2.5, 32), h = 3 + rnd() * 6, cr = 0.7 + h * 0.12;         // young trees
+      if (treeOk(p, h, cr) && offLane(p, cr)) T.push([p, h, cr, rnd()]); }
+    const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), UP = V(0, 1, 0), col = new THREE.Color();
+    const bm = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff }), B.length);
+    B.forEach(([p, rad, h, r], i) => { Q.setFromAxisAngle(UP, r * 6.28); M4.compose(V(p.x, hAt(p.x, p.z) - 0.05, p.z), Q, V(rad, h, rad * (0.8 + r * 0.4))); bm.setMatrixAt(i, M4);
+      bm.setColorAt(i, col.set(r < 0.5 ? 0x3f5a2c : 0x4d6233)); });
     const trunkG = new THREE.CylinderGeometry(0.06, 0.1, 1, 5); trunkG.translate(0, 0.5, 0);
     const crownG = new THREE.ConeGeometry(1, 1, 7); crownG.translate(0, 0.5, 0);
-    const trunkM = new THREE.MeshLambertMaterial({ color: 0x5b4636 }), crownM = new THREE.MeshLambertMaterial({ color: 0x2f4a26 }), crownM2 = new THREE.MeshLambertMaterial({ color: 0x3a5530 });
-    for (let k = 0; k < 40; k++) {
-      const ang = rnd() * Math.PI * 2, d = 3 + rnd() * 12, p = mid.clone().addScaledVector(fwd.clone().multiplyScalar(Math.cos(ang)).addScaledVector(left, Math.sin(ang)), d);
-      const h = 3 + rnd() * 5, cr = 0.7 + h * 0.12; if (!clear(p, cr + 0.6)) continue;
-      const y = hAt(p.x, p.z), t = new THREE.Mesh(trunkG, trunkM); t.position.set(p.x, y - 0.1, p.z); t.scale.set(1 + h * 0.08, h * 0.45, 1 + h * 0.08);
-      const c = new THREE.Mesh(crownG, rnd() < 0.5 ? crownM : crownM2); c.position.set(p.x, y + h * 0.3, p.z); c.scale.set(cr, h * 0.72, cr); c.rotation.y = rnd() * 6.28;
-      t.castShadow = c.castShadow = true; c.receiveShadow = true; bushGroup.add(t, c); }
+    const tm = new THREE.InstancedMesh(trunkG, new THREE.MeshLambertMaterial({ color: 0x5b4636 }), T.length);
+    const cm = new THREE.InstancedMesh(crownG, new THREE.MeshLambertMaterial({ color: 0xffffff }), T.length);
+    T.forEach(([p, h, cr, r], i) => { const y = hAt(p.x, p.z); Q.setFromAxisAngle(UP, r * 6.28);
+      M4.compose(V(p.x, y - 0.1, p.z), Q, V(1 + h * 0.08, h * 0.45, 1 + h * 0.08)); tm.setMatrixAt(i, M4);
+      M4.compose(V(p.x, y + h * 0.3, p.z), Q, V(cr, h * 0.72, cr)); cm.setMatrixAt(i, M4); cm.setColorAt(i, col.set(r < 0.5 ? 0x2f4a26 : 0x3a5530)); });
+    for (const m of [bm, tm, cm]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; bushGroup.add(m); }
     scene.add(bushGroup);
   }
   async function setSite(n, c) {
