@@ -1626,7 +1626,7 @@ export async function play(ctx) {
   veil.style.cssText = "position:fixed;inset:0;z-index:200;background:#0d0f11;color:#eee;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font:16px system-ui";
   veil.innerHTML = `<div style="font-weight:600;color:#f2c94c">${TITLE}</div><div id="veilTxt">Wczytywanie nagrań lektora…</div><div style="width:320px;height:6px;background:#333;border-radius:3px"><div id="veilBar" style="height:6px;width:0;background:#f2c94c;border-radius:3px"></div></div>`;
   document.body.append(veil);
-  const progress = f => { veil.querySelector("#veilBar").style.width = `${Math.round(f * 100)}%`; };
+  const progress = f => { veil.querySelector("#veilBar").style.width = `${Math.round(f * 100)}%`; if (window.__welcomeProgress) window.__welcomeProgress(Math.min(0.99, f)); };
   await tl.load(f => progress(f * 0.6));
   veil.querySelector("#veilTxt").textContent = "Przygotowanie ujęć…";
   const renderer = ctx.renderer;
@@ -1643,7 +1643,15 @@ export async function play(ctx) {
   window.__demoState = () => tl.playing || SITE === 3 || sway || liveCam || LIVE.some(t => t != null && performance.now() - t < 8000) || freeCam || fpp || (scopeDrag && scopeDrag.down) ? "busy" : hl || dirLine.visible ? "ambient" : "idle";
   if (window.__redraw) window.__redraw.kick(1500);                     // the first frames of the loaded scene
   addEventListener("pointerdown", () => snd.unlock(), { once: true });
-  startGate(TITLE, () => { snd.unlock(); tl.seek(0); tl.play(); }, k => runTask(k));
+  // the welcome screen (index.html, author 21 XI) instead of the start gate: lesson / training / exam of a scenario;
+  // a choice made while the scene was loading starts now
+  window.__welcomeProgress && window.__welcomeProgress(1);
+  window.__welcomeAct = (mode, scenario) => { snd.unlock(); tl.ac.resume();
+    if (mode === "lesson") { if (scenario === 3) runTask("show3"); else { tl.seek(0); tl.play(); } return; }
+    runTask(mode, { scenario }); };
+  window.__welcomeStop = () => { if (taskOn) location.reload(); else tl.pause(); };   // back to the menu: a running task is left by a reload
+  if (window.__welcomePending) { const a = window.__welcomePending; window.__welcomePending = null; document.getElementById("welcome")?.classList.add("hidden"); document.getElementById("menuBtn")?.classList.add("on"); window.__welcomeAct(...a); }
+  if (!document.documentElement.classList.contains("app")) startGate(TITLE, () => { snd.unlock(); tl.seek(0); tl.play(); }, k => runTask(k));
   // training / exam (panel "Zadania"): runner.js drives the timeline; one at a time
   let taskOn = false;
   async function runTask(mode, opts) {
@@ -1652,7 +1660,7 @@ export async function play(ctx) {
     try { if (mode === "show3") { const { startShow } = await import("./scene3show.js" + ver); await startShow({ tl, panel, demo: window.__demo }); return; }   // scenario 3 demonstration
       const [{ startTask }, tab] = await Promise.all([import("./training/runner.js" + ver), fetch("demo/ballistics_table.json" + ver).then(r => r.json())]);
       await startTask(mode, { tl, panel, demo: window.__demo, tab, canvas: ctx.renderer.domElement, chapterTitles: SCENES }, opts); }
-    catch (e) { console.error("task", e); } finally { taskOn = false; } }   // sound needs a click first: the scene starts on it
+    catch (e) { console.error("task", e); } finally { taskOn = false; if (window.showWelcome && document.documentElement.classList.contains("app")) window.showWelcome(); } }   // back to the menu   // sound needs a click first: the scene starts on it
   window.__demo = { COL, runTask: (...a) => runTask(...a), tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt,
     setConditions, sightBlocked, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; },
     setCam: c => { window.__dbgCam = c; if (window.__redraw) window.__redraw.kick(800); }, setSite, deckWalk: t => deckWalk(t ?? deckT), get site3() { return SITE3; }, setTargets, activateTarget, setCardTargets: list => { CARD_PREV = list || []; }, setRounds: n => { NR = n; }, aimNudge, setAimHold: on => { holding = !!on; }, breathChart: on => { chartOn = !!on; drawChart(); }, fireLive, getDial: () => ({ elev: ELEV, wind: WIND }), setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };

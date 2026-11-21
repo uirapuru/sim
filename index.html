@@ -3,8 +3,31 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kijewo – próba terenu</title>
+<title>MilSim – Grzegorz Kaszuba</title>
+<script>
+  // the app (author, 21 XI): /sim/ opens the welcome screen with the three scenarios; ?scene=terrain (and the other
+  // development scenes) keep the old terrain panel
+  if (!/[?&]scene=(?!demo1\b)/.test(location.search)) document.documentElement.classList.add("app");
+</script>
 <style>
+  .app #hud, .app #info, .app #load { display: none !important; }
+  #welcome { display: none; position: fixed; inset: 0; z-index: 400; flex-direction: column; align-items: center; justify-content: flex-start; gap: 28px; padding: 6vh 4vw 4vh; box-sizing: border-box; overflow-y: auto;
+    background: linear-gradient(180deg, rgba(8,10,12,.72) 0%, rgba(8,10,12,.35) 40%, rgba(8,10,12,.82) 100%), url(welcome.jpg) center / cover no-repeat #1b1f23; color: #eee; font-family: system-ui, sans-serif; }
+  .app #welcome { display: flex; } .app #welcome.hidden { display: none; }
+  #welcome h1 { margin: 0; font: 800 clamp(44px, 8vw, 84px)/1 system-ui; letter-spacing: .06em; color: #f2c94c; text-shadow: 0 4px 24px rgba(0,0,0,.6); }
+  #welcome .by { margin-top: 8px; font: 14px system-ui; color: #d8d2c0; letter-spacing: .04em; text-align: center; }
+  #welcome .cards { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; margin-top: auto; width: min(1180px, 100%); }
+  #welcome .card { flex: 1 1 300px; max-width: 380px; background: rgba(12,14,16,.78); border: 1px solid rgba(242,201,76,.35); border-radius: 10px; padding: 18px 20px; box-shadow: 0 8px 30px rgba(0,0,0,.45); display: flex; flex-direction: column; }
+  #welcome .card .n { font: 600 12px system-ui; color: #f2c94c; letter-spacing: .12em; text-transform: uppercase; }
+  #welcome .card h2 { margin: 4px 0 8px; font: 700 21px system-ui; color: #fff; }
+  #welcome .card p { margin: 0 0 16px; font: 14px/1.45 system-ui; color: #cfd3d6; flex: 1; }
+  #welcome .btns { display: flex; gap: 8px; }
+  #welcome button { flex: 1; background: rgba(242,201,76,.12); color: #f2c94c; border: 1px solid #f2c94c; border-radius: 6px; padding: 9px 6px; font: 600 15px system-ui; cursor: pointer; }
+  #welcome button:hover:not(:disabled) { background: #f2c94c; color: #111; }
+  #welcome button:disabled { opacity: .35; cursor: default; }
+  #welcome .wLoad { font: 13px system-ui; color: #cfd3d6; min-height: 1.2em; }
+  #quality { z-index: 410 !important; }
+  #menuBtn { display: none; } .app #menuBtn.on { display: inline-block; }
   html, body { margin: 0; height: 100%; background: #9fb6c9; overflow: hidden; font: 14px system-ui, sans-serif; }
   #hud { position: fixed; left: 12px; top: 52px; background: rgba(0,0,0,.65); color: #fff; padding: 10px 12px; border-radius: 6px; max-width: 380px; }
   #hud b { color: #ffd34d; }
@@ -43,7 +66,19 @@
   Wiatr: <input id="wind" type="range" min="0" max="12" step="0.5" value="4" style="width:120px;vertical-align:middle"> <span id="windv">4 m/s</span>
 </div>
 <div id="info"></div>
-<div id="quality"><button id="qualityBtn" title="Przełącz jakość grafiki">Grafika: prosta</button><span id="fps">– fps</span><span id="offline" style="display:none"></span></div>
+<div id="welcome">
+  <div style="text-align:center"><h1>MilSim</h1><div class="by">autor: Grzegorz Kaszuba</div></div>
+  <div class="cards">
+    <div class="card"><div class="n">Scenariusz 1</div><h2>Strzelanie z SpKW/Z</h2><p>Jeden gong na 300–900 m. Cała procedura: od linii wyjściowej, przez pomiar, nastawy i trzy strzały, po rozładowanie i przegląd broni.</p>
+      <div class="btns"><button data-m="lesson" data-s="1">Lekcja</button><button data-m="train" data-s="1">Trening</button><button data-m="exam" data-s="1">Egzamin</button></div></div>
+    <div class="card"><div class="n">Scenariusz 2</div><h2>Trzy cele</h2><p>Trzy gongi od najbliższego do najdalszego. Wyszukanie wszystkich celów, pomiar, kierunki, karta ognia i po dwa strzały na cel.</p>
+      <div class="btns"><button data-m="lesson" data-s="2" disabled title="Lekcja w przygotowaniu">Lekcja</button><button data-m="train" data-s="2">Trening</button><button data-m="exam" data-s="2">Egzamin</button></div></div>
+    <div class="card"><div class="n">Scenariusz 3</div><h2>Para strzelec–obserwator</h2><p>Para ukryta w lesie, cel na trybunie, około 600 m. Pomiar ze wzrostu, warunki z Kestrela, klasyczny dialog i ocena trafienia.</p>
+      <div class="btns"><button data-m="lesson" data-s="3">Lekcja</button><button data-m="train" data-s="3">Trening</button><button data-m="exam" data-s="3">Egzamin</button></div></div>
+  </div>
+  <div class="wLoad" id="wLoad">Wczytywanie symulatora…</div>
+</div>
+<div id="quality"><button id="menuBtn" title="Wybór scenariusza i trybu">Menu</button><button id="qualityBtn" title="Przełącz jakość grafiki">Grafika: prosta</button><span id="fps">– fps</span><span id="offline" style="display:none"></span></div>
 <script type="module">
 import * as THREE from "three";
 import { Sky } from "three/addons/objects/Sky.js";
@@ -356,6 +391,14 @@ if ("serviceWorker" in navigator && (window.SIM_RELEASE !== "dev" || QS.has("sw"
   navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready).then(r => r.active && r.active.postMessage({ type: "sw-status" }))
     .catch(err => { badge.textContent = "offline: niedostępne"; console.warn("service worker", err); });
 }
+// the welcome screen: a choice before the scene is ready is kept and started once it is (scene1.js sets __welcomeAct)
+{ const W = document.getElementById("welcome"), menu = document.getElementById("menuBtn");
+  window.showWelcome = () => { W.classList.remove("hidden"); menu.classList.remove("on"); };
+  window.__welcomeProgress = f => { const e = document.getElementById("wLoad"); if (e) e.textContent = f >= 1 ? "" : `Wczytywanie symulatora… ${Math.round(f * 100)}%`; };
+  W.querySelectorAll("button[data-m]").forEach(b => b.onclick = () => { const a = [b.dataset.m, +b.dataset.s];
+    if (window.__welcomeAct) { W.classList.add("hidden"); menu.classList.add("on"); window.__welcomeAct(...a); }
+    else { window.__welcomePending = a; document.getElementById("wLoad").textContent = "Wczytywanie symulatora… scena ruszy, gdy będzie gotowa."; } });
+  menu.onclick = () => { if (window.__welcomeStop) window.__welcomeStop(); window.showWelcome(); }; }
 document.getElementById("qualityBtn").onclick = () => window.__quality.set(QUALITY === "hi" ? "lo" : "hi");
 
 // ---------- buildings ----------
@@ -669,7 +712,7 @@ window.__sim = { camera, trees: tr, hideTreesNear, restoreTrees, look: (x, y, z,
 setView("firing_point");
 // the demo scene (author, 18 XI): while it loads, a standing view from the firing point back to the stand, instead of the
 // prone view downrange with a red distance post filling the frame
-if (new URLSearchParams(location.search).get("scene") === "demo1") {
+if (document.documentElement.classList.contains("app")) {
   const [fx, , fz] = meta.positions.firing_point, sd = meta.standDeck, [sx, sy, sz] = sd ? [sd.x, sd.y + 1.5, sd.z] : meta.positions.stand;
   const dx = sx - fx, dz = sz - fz, dl = Math.hypot(dx, dz), k = Math.min(8, dl * 0.3) / dl, ex = fx + dx * k, ez = fz + dz * k;   // a few metres on: clear of the lamp post
   window.__sim.look(ex, hAt(ex, ez) + 1.7, ez, sx, sy, sz);
@@ -682,7 +725,7 @@ window.__playSling = playSling;
 if (new URLSearchParams(location.search).get("scene") === "sling") playSling();
 const playDemo1 = async () => { const m = await import("./demo/scene1.js?v=" + window.SIM_V); return m.play(window.__ctx).catch(e => { console.error("demo scene error", e); window.__seqErr = String(e.stack || e); }); };
 document.getElementById("playDemo1").onclick = () => playDemo1();
-if (new URLSearchParams(location.search).get("scene") === "demo1") playDemo1();
+if (document.documentElement.classList.contains("app")) playDemo1();   // the app: the lesson scene behind the welcome screen
 
 const info = document.getElementById("info"), clock = new THREE.Clock(), cam2 = new THREE.Vector2();
 const fpsEl = document.getElementById("fps"); let fpsN = 0, fpsT0 = performance.now();

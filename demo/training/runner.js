@@ -42,12 +42,15 @@ export async function startTask(mode, ctx, opts = {}) {
     const sel = document.createElement("div");
     sel.innerHTML = `<p>Wykonujesz procedurę sam, krok po kroku. Wskaż w scenie element i wybierz czynność, a przy zadaniach rachunkowych wpisz wynik. Gdy utkniesz, użyj „Daj podpowiedź”.</p>
       <p>Odległość do gongu, wiatr, godzina strzelania, pogoda, temperatura i ciśnienie są losowane na to podejście. Tabele balistyczne są dla 15 °C i 1010 hPa: w innych warunkach uwzględnij poprawkę.</p><label>Scenariusz: <select class="scn">${SCENARIOS.map(x => `<option value="${x.n}">${x.n}. ${x.title}</option>`).join("")}</select></label><br><br><label>Zacznij od rozdziału: <select class="from">${SECTIONS.map(x => `<option value="${x.n}">${x.n}. ${x.title}</option>`).join("")}</select></label>`;
-    const v = opts.from != null ? { from: opts.from, scenario: opts.scenario ?? 1 } : await ui.modal("Trening", sel, [{ text: "Anuluj", value: null }, { text: "Start", main: true, value: () => ({ from: +sel.querySelector(".from").value, scenario: +sel.querySelector(".scn").value }) }]);
+    if (opts.scenario) { sel.querySelector(".scn").closest("label").remove(); sel.querySelector("br") && sel.querySelector("br").remove();
+      if (opts.scenario !== 1) sel.querySelector(".from").closest("label").remove(); }   // chosen on the welcome screen; chapters only in scenario 1
+    const v = opts.from != null ? { from: opts.from, scenario: opts.scenario ?? 1 } : await ui.modal("Trening", sel, [{ text: "Anuluj", value: null }, { text: "Start", main: true, value: () => ({ from: +(sel.querySelector(".from") || { value: 1 }).value, scenario: opts.scenario || +sel.querySelector(".scn").value }) }]);
     if (v == null) { ui.destroy(); return; } from = v.from; scenario = v.scenario;
   } else {
     const exSel = document.createElement("div"); exSel.innerHTML = `<p>Całą procedurę wykonujesz sam, bez podpowiedzi. Masz ${Math.round((window.__examMs ?? EXAM_MS) / 60000) || "<1"} min. Zaliczenie od ${PASS}% poprawnych kroków.</p>
       <p>Każdy krok ma jedną próbę. Czy odpowiedź była dobra, zobaczysz w omówieniu na końcu. Odległość do gongu, wiatr, godzina strzelania, pogoda, temperatura i ciśnienie są losowane. Tabele balistyczne są dla 15 °C i 1010 hPa: w innych warunkach uwzględnij poprawkę.</p><label>Scenariusz: <select class="scn">${SCENARIOS.map(x => `<option value="${x.n}">${x.n}. ${x.title}</option>`).join("")}</select></label>`;
-    const go = opts.from != null ? { scenario: opts.scenario ?? 1 } : await ui.modal("Egzamin", exSel, [{ text: "Anuluj", value: null }, { text: "Start", main: true, value: () => ({ scenario: +exSel.querySelector(".scn").value }) }]);
+    if (opts.scenario) exSel.querySelector(".scn").closest("label").remove();
+    const go = opts.from != null ? { scenario: opts.scenario ?? 1 } : await ui.modal("Egzamin", exSel, [{ text: "Anuluj", value: null }, { text: "Start", main: true, value: () => ({ scenario: opts.scenario || +exSel.querySelector(".scn").value }) }]);
     if (go == null) { ui.destroy(); return; } scenario = go.scenario;
   }
   // the target is drawn somewhere the shooter can see it: no trees or ground on the line of sight (author, 19 XI)
