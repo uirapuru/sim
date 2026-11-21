@@ -1,7 +1,7 @@
 // Scenario 3, demonstration (author, 21 XI 2026; docs/superpowers/specs/2026-11-21-scenario3-sniper-team-design.md):
 // the sniper pair in the forest, the instructor on the stand's deck. The narrator explains, the spotter and the shooter
-// speak the classic fire dialogue (sniperTAK); the first shot misses (the wind called too light), the correction is
-// given and repeated, the second shot hits. Fixed conditions, so the dialogue has fixed numbers (the recorded voices).
+// speak the fire dialogue (sniperTAK, the author's wording of 21 XI: target confirmed, settings in milsa); the first
+// shot hits, the target falls, "Cel zlikwidowany", and the pair withdraws crawling, then on foot. Fixed conditions, so the dialogue has fixed numbers (the recorded voices).
 const V_ = new URL(import.meta.url).search;
 const { VIEW_CONDITIONS } = await import("./training/conditions.js" + V_);
 const COND = { wind: 3, windFrom: 9, hour: 11, weather: "clear", temp: 15, pressure: 1010 };
@@ -49,17 +49,26 @@ export async function startShow({ tl, panel, demo }) {
     demo.setCam(null); tl.holdAt("s09.why", 0.5); note("Czekamy, aż instruktor stanie…"); await waitStop();
     note("Wysokość 1,80 m → 3,0 mil · 1,8 × 1000 / 3,0 = 600 m"); await say("n3");
     note(""); demo.setKestrelInset({ ...COND, wind: COND.wind }); tl.holdAt("s14.cmd", 0.5); demo.setCam(pairCam); await say("n4");
-    for (const id of ["d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9", "d10"]) await say(id);
-    // the first shot: on the spotter's command, when the instructor stands
+    for (const id of ["d1", "d2", "d5", "d6", "d7", "d8", "d9", "d10"]) await say(id);
+    demo.setDial({ elev: 6.0, wind: 1.3 });   // as called: 6,0 milsa up, 1,3 milsa left (wind from 9)
+    // the shot: on the spotter's command, when the instructor stands; the first one hits
     demo.setCam(null); tl.holdAt("s15.trigger", 0.6); note("Strzelec czeka na komendę"); await waitStop(); note("");
     await say("d11"); await say("d12"); if (stopped) return;
-    const r1 = await demo.fireLive(0);
-    await say(r1.hit ? "d16" : "d13"); if (!r1.hit) { await say("d14"); demo.setDial({ elev: 6.0, wind: 1.3 }); demo.setCam(pairCam); tl.holdAt("s14.cmd", 0.5); await say("n5");
-      demo.setCam(null); tl.holdAt("s15.trigger", 0.6); await waitStop(); await say("d15"); if (stopped) return;
-      const r2 = await demo.fireLive(1); if (r2.hit) await say("d16"); else note("Pudło – w treningu obserwator poda kolejną poprawkę"); }
-    demo.setCam(pairCam); tl.holdAt("s14.cmd", 0.5); await say("n6"); await wait(800);
+    const r1 = await demo.fireLive(0); await wait(400);
+    if (r1.hit) await say("d16"); else note("Pudło – w treningu obserwator poda poprawkę");
+    // the withdrawal: crawling back into the forest, then on foot, gone among the trees (author, 21 XI)
+    demo.setCam(null); tl.holdAt("s14.cmd", 0.5); demo.setKestrelInset(null);
+    const back = fp.clone().sub(s3.aim).setY(0).normalize(), sideW = { x: -back.z, z: back.x };
+    // down the open lane of the withdrawal: they crawl towards the camera
+    demo.setCam({ p: fp.clone().add({ x: sideW.x * 1.2 + back.x * 9, y: 2.4, z: sideW.z * 1.2 + back.z * 9 }), t: fp.clone().add({ x: back.x * 3, y: 0.1, z: back.z * 3 }), fov: 45 });
+    demo.setWithdraw("crawl"); await say("n6"); await wait(2500);
+    const base = fp.clone().addScaledVector(back, 50);
+    demo.setWithdraw("walk");
+    demo.setCam({ p: base.clone().add({ x: sideW.x * 6 - back.x * 3, y: 1.7, z: sideW.z * 6 - back.z * 3 }), t: base.clone().addScaledVector(back, 10).setY(base.y + 1.2), fov: 50 });
+    await say("n7"); await wait(5000);
+    demo.setWithdraw(null);
   } finally {
-    sub.remove(); box.remove(); skip.remove(); demo.setCam(null); demo.setKestrelInset(null);
+    sub.remove(); box.remove(); skip.remove(); demo.setCam(null); demo.setKestrelInset(null); demo.setWithdraw(null);
     await demo.setSite(1, VIEW_CONDITIONS); await demo.setConditions(VIEW_CONDITIONS, true);
     tl.voice = voice0; panel.setSubs(true); panel.setLocked(false); tl.holdAt(tl.beats[0].say, 0);
   }

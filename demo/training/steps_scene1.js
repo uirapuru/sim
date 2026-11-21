@@ -180,11 +180,10 @@ export function scenarioSteps(n) {
 // the instructor on the stand's deck (1.80 m); the trainee is the spotter (finds, measures, reads the wind, works out
 // the settings, leads the classic dialogue, judges the shot) and the shooter (fires on "Ognia." when the instructor
 // stands). Frames: the scope (s08/s09/s15) and the view from behind the pair (s06.cheek)
-export const DIALOG3 = c => [   // the spotter's calls in order; c.call = the settings the trainee worked out
-  "Cel — człowiek na trybunie, w narożniku pomostu.",
-  `Odległość — ${c.ownRange ?? c.range}.`,
-  `Podniesienie — ${fmt(c.call ? c.call.elev : 0)}.`,
-  `Wiatr — ${fmt(Math.abs(c.call ? c.call.wind : 0))} ${c.call && c.call.wind < 0 ? "w prawo" : "w lewo"}.`,
+export const DIALOG3 = c => [   // the spotter's calls in order (author, 21 XI: target confirmed, settings in milsa); c.call = the trainee's settings
+  `Cel: człowiek na trybunie, dystans ${c.ownRange ?? c.range}. Potwierdź cel.`,
+  `Podniesienie: ${fmt(c.call ? c.call.elev : 0)} milsa.`,
+  `Wiatr: ${fmt(Math.abs(c.call ? c.call.wind : 0))} milsa ${c.call && c.call.wind < 0 ? "w prawo" : "w lewo"}.`,
   "Obserwator gotowy.",
 ];
 const fmt = v => (Math.round(v * 10) / 10).toFixed(1).replace(".", ",");
@@ -202,7 +201,7 @@ function scenario3Steps() {
       ask: "Wylicz z tabel nastawy dla strzelca: podniesienie i poprawkę boczną." },
     { id: "s3_dialog", chapter: 13, kind: "sequence", voice: "s3_dialog", hold: { key: "s06.cheek", u: 0.5 }, play: ["s06.cheek"], lines: DIALOG3,
       ask: "Poprowadź dialog: wybieraj kolejne komendy obserwatora. Strzelec odpowiada.",
-      hint: "Kolejność: cel, odległość, podniesienie, wiatr, a po „Strzelec gotowy” – „Obserwator gotowy”." },
+      hint: "Kolejność: cel z dystansem (strzelec potwierdza), podniesienie, wiatr, a po „Strzelec gotowy” – „Obserwator gotowy”." },
     { ...by("shot"), id: "s3_shot", baseId: "shot", voice: "s3_shot", shots: [0, 1], stop: { hits: 1, misses: 2 }, whenStopped: true, play: ["s16.group"],
       ask: "Jesteś strzelcem. Strzelasz na komendę „Ognia.”, gdy instruktor stoi.",
       hint: "Gdy instruktor idzie, czekaj. Po „Ognia.” strzelaj w pauzie po wydechu. Po pudle obserwator podaje poprawkę: popraw nastawy." },

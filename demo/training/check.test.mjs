@@ -142,7 +142,7 @@ test("scenario 3: spotter, shooter, spotter; the dialogue follows the trainee's 
   assert.deepEqual(s3.map(s => s.id), ["s3_find", "s3_height", "s3_range", "s3_wind", "s3_dial", "s3_dialog", "s3_shot", "s3_judge"]);
   assert.equal(SCENARIOS.length, 3);
   const L = DIALOG3({ range: 593, ownRange: 600, call: { elev: 6.0, wind: -1.3 } });
-  assert.deepEqual(L.slice(1, 4), ["Odległość — 600.", "Podniesienie — 6,0.", "Wiatr — 1,3 w prawo."]);
+  assert.deepEqual(L.slice(0, 3), ["Cel: człowiek na trybunie, dystans 600. Potwierdź cel.", "Podniesienie: 6,0 milsa.", "Wiatr: 1,3 milsa w prawo."]);
   const sh = s3.find(s => s.id === "s3_shot"); assert.deepEqual([sh.stop, sh.shots, sh.whenStopped], [{ hits: 1, misses: 2 }, [0, 1], true]);
   const j = s3.find(s => s.id === "s3_judge"); assert.equal(j.correct({ lastHit: true }), "Trafienie."); assert.equal(j.correct({ lastHit: false }), "Pudło.");
 });

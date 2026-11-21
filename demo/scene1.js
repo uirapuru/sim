@@ -767,6 +767,26 @@ export async function play(ctx) {
     return { at, yaw, stop, walk: d, clips: stop || turn ? [["Idle", t % 8, 1]] : [["Walking", (d / 1.35) % 1.0, 1]] };
   }
   let deckT = 0, observer = null, obsScope = null;
+  // site 3 after a hit (author, 21 XI): the instructor falls (no gong sound), the pair withdraws - crawling back into
+  // the forest, then on foot, and is gone
+  let deckFall = null, withdraw = null;
+  function withdrawPose(S) {
+    const w = (performance.now() - withdraw.t0) / 1000, back = fwd.clone().negate();
+    S.rifle.mode = "sling"; S.rifle.blend = 0; S.man.R = null; S.man.L = null; S.man.look = null; S.man.trigger = false;
+    S.props.kestrel = null; S.props.mag = null; S.props.notebook = null; S.cam = S.cam || null;
+    if (withdraw.phase === "crawl") { const dur = man.acts.Low_Crawl ? man.acts.Low_Crawl.getClip().duration : 2;
+      const d = Math.min(w * 0.35, 50); S.man.at = PRONE.clone().addScaledVector(back, d); S.man.yaw = yawFwd + Math.PI; S.man.clips = [["Low_Crawl", w % dur, 1]]; }
+    else { const d = w * 1.3; S.man.at = withdraw.base.clone().addScaledVector(back, d); S.man.yaw = yawFwd + Math.PI; S.man.clips = [["Walking", 0, 1]]; S.man.walk = d; }
+    withdraw.S = S;
+  }
+  function withdrawAfter() {
+    const S = withdraw.S, w = (performance.now() - withdraw.t0) / 1000; if (obsScope) obsScope.visible = false;
+    if (observer) { const at = S.man.at.clone().addScaledVector(left, 1.1); at.y = hAt(at.x, at.z);
+      const cl = S.man.clips[0][0] === "Walking" ? [["Walking", ((S.man.walk + 0.6) / 1.35) % 1.0, 1]] : S.man.clips; placeSoldier(observer, at, S.man.yaw, cl); }
+    if (withdraw.phase === "walk" && w > (withdraw.gone ?? 14)) { man.m.visible = rifle.visible = false; if (observer) observer.m.visible = false; }   // gone among the trees
+  }
+  const setWithdraw = phase => { if (!phase) { withdraw = null; if (observer) observer.m.visible = SITE === 3; man.m.visible = rifle.visible = true; return; }
+    withdraw = { phase, t0: performance.now(), base: PRONE.clone().addScaledVector(fwd, -50) }; withdraw.base.y = hAt(withdraw.base.x, withdraw.base.z); };
   // bushes around the pair: low leafy clumps 0.7-1.4 m high in a ring 1.8-6 m out, none in a 10-degree slit in front
   // (the muzzle and the spotting scope look through it); the same random draw every time
   let bushGroup = null;
@@ -778,6 +798,11 @@ export async function play(ctx) {
     const mid = PRONE.clone().addScaledVector(left, 0.55);                     // between the shooter and the observer
     const scopeEye = RL(EYE), obsEye = obsScope ? obsScope.position.clone() : scopeEye.clone().addScaledVector(left, 1.1);
     const sightLines = [[scopeEye, SITE3.aim.clone()], [obsEye, SITE3.aim.clone()]];
+    const near = (p, a, b) => { const ab = b.clone().sub(a).setY(0), t = Math.min(1, Math.max(0, p.clone().sub(a).setY(0).dot(ab) / ab.lengthSq()));
+      return p.distanceTo(a.clone().lerp(b, t).setY(p.y)); };
+    // the lane of the withdrawal (50 m straight back), kept open so the lesson's camera sees them crawl
+    const lane = [mid.clone().addScaledVector(fwd, -1.5), mid.clone().addScaledVector(fwd, -52)];
+    const clear = (p, r) => !sightLines.some(([a, b]) => near(p, a, b.clone().lerp(a, -10)) < r) && near(p, lane[0], lane[1]) > r + 0.4;
     for (let k = 0; k < 46; k++) {
       const ang = rnd() * Math.PI * 2, d = 1.8 + rnd() * 4.2, front = Math.cos(ang), side = Math.sin(ang);
       const dir = fwd.clone().multiplyScalar(front).addScaledVector(left, side);
@@ -785,12 +810,11 @@ export async function play(ctx) {
       // the slit: no bush within reach of the shooter's or the observer's line of sight
       if (sightLines.some(([a, b]) => { const ab = b.clone().sub(a).setY(0), t = Math.max(0, p.clone().sub(a).setY(0).dot(ab) / ab.lengthSq());
         return p.distanceTo(a.clone().lerp(b, t).setY(p.y)) < rad * 1.3 + 0.35; })) continue;
+      if (near(p, lane[0], lane[1]) < rad + 0.5) continue;
       const b = new THREE.Mesh(geo, rnd() < 0.5 ? mat : mat2); b.position.set(p.x, hAt(p.x, p.z) - 0.05, p.z); b.scale.set(rad, hgt, rad * (0.8 + rnd() * 0.4)); b.rotation.y = rnd() * 6.28;
       b.castShadow = b.receiveShadow = true; bushGroup.add(b); }
     // denser undergrowth further out and young trees around (author, 21 XI: in the shots the pair seemed to lie in the
     // open - the forest from the map is sparse here); none within reach of the two sight lines
-    const clear = (p, r) => !sightLines.some(([a, b]) => { const ab = b.clone().sub(a).setY(0), t = Math.max(0, p.clone().sub(a).setY(0).dot(ab) / ab.lengthSq());
-      return p.distanceTo(a.clone().lerp(b, t).setY(p.y)) < r; });
     for (let k = 0; k < 70; k++) {
       const ang = rnd() * Math.PI * 2, d = 6 + rnd() * 10, p = mid.clone().addScaledVector(fwd.clone().multiplyScalar(Math.cos(ang)).addScaledVector(left, Math.sin(ang)), d);
       const hgt = 0.6 + rnd() * 1.0, rad = 0.6 + rnd() * 0.9; if (!clear(p, rad * 1.3 + 0.4)) continue;
@@ -808,7 +832,7 @@ export async function play(ctx) {
     scene.add(bushGroup);
   }
   async function setSite(n, c) {
-    SITE = n;
+    SITE = n; deckFall = null; withdraw = null;
     if (n === 3) {
       fp.copy(g(SITE3.pair.clone())); fwd0.copy(SITE3.mid.clone().sub(fp).setY(0).normalize()); left0.set(fwd0.z, 0, -fwd0.x);
       // concealment (author, 21 XI): no lane through the forest - only the trees standing on the pair's bodies and the
@@ -1070,7 +1094,8 @@ export async function play(ctx) {
     const a = aimNow(); AIM[n][0] = a[0]; AIM[n][1] = a[1]; SHOT_DIAL[n] = { elev: ELEV, wind: WIND }; marksDrawn = -1;
     if (sway) sway.frozen = a; holding = false; LIVE[n] = performance.now(); snd.shot();
     const im = impact(n), hit = onPlate(im), land = (TOF + 0.15) / LIVE_SLOW * 1000;
-    if (hit) setTimeout(() => snd.ding(), land + SOUND_BACK * 1000);
+    if (hit && SITE === 3) setTimeout(() => { deckFall = performance.now(); }, land);   // a man, not a gong: no ring, he falls
+    else if (hit) setTimeout(() => snd.ding(), land + SOUND_BACK * 1000);
     return new Promise(res => {
       setTimeout(() => { liveCam = { kind: "gongClose" }; }, land + 250);
       setTimeout(() => { liveCam = null; res({ hit, x: im[0], y: im[1] }); }, land + 250 + 2200); });
@@ -1376,7 +1401,9 @@ export async function play(ctx) {
       if (strap) { strap.geometry.dispose(); strap.geometry = geo; strap.visible = true; } else { strap = new THREE.Mesh(geo, strapMat); strap.castShadow = true; scene.add(strap); }
     } else if (strap) strap.visible = false;
     // instructor: stands beside the spotter, faces the shooter
-    if (SITE === 3) { const w = deckWalk(deckT); placeSoldier(inst, w.at, w.yaw, w.clips); }   // site 3: on the deck
+    if (SITE === 3 && deckFall) { const k = Math.min(1, (performance.now() - deckFall) / 650), at = SITE3.B.clone().setY(SITE3.deckY);   // hit: he falls back behind the parapet
+      placeSoldier(inst, at, yawOf(SITE3.pair.clone().sub(at).setY(0)), [["Idle", 0, 1]]); inst.m.rotateX(-1.5 * k * k); inst.m.updateMatrixWorld(true); }
+    else if (SITE === 3) { const w = deckWalk(deckT); placeSoldier(inst, w.at, w.yaw, w.clips); }   // site 3: on the deck
     else { const I = S.inst, cl = I.clips ? I.clips.map(c => c[0] === "Walking" ? ["Walking", (I.walk / 1.35) % 1.0, 1] : c) : [["Idle", T % 8, 1]];
       placeSoldier(inst, I.at.clone().setY(hAt(I.at.x, I.at.z)), I.yaw, cl);
       inst.rig.bend(I.lean || 0);
@@ -1617,7 +1644,7 @@ export async function play(ctx) {
       for (const sh of SHOTS) { const a = bt(sh, prevT), b = bt(sh, T); if (a < 0 && b >= 0) snd.shot(); const td = TOF + SOUND_BACK; if (a < td && b >= td && onPlate(impact(sh.n))) snd.ding(); }
     }
     prevT = T;
-    render(tl.evaluate(T), T);
+    { const S_ = tl.evaluate(T); if (SITE === 3 && withdraw) withdrawPose(S_); render(S_, T); if (SITE === 3 && withdraw) withdrawAfter(); }
     panel.update();
   };
   // ---------- load everything before the first frame: narration buffers, then one render of every beat ----------
@@ -1663,7 +1690,7 @@ export async function play(ctx) {
     catch (e) { console.error("task", e); } finally { taskOn = false; if (window.showWelcome && document.documentElement.classList.contains("app")) window.showWelcome(); } }   // back to the menu   // sound needs a click first: the scene starts on it
   window.__demo = { COL, runTask: (...a) => runTask(...a), tl, render, man, inst, handsMan, handsInst, kestrel, rifle, gong, GC, fp, PRONE, KNEEL, eyeW, SHOTS, pathAt,
     setConditions, sightBlocked, setDial, setQuiz, setScopeDrag, setAimSway, aimOnGong, aimNow: () => aimCur.slice(), setShotAim: (n, a) => { AIM[n][0] = a[0]; AIM[n][1] = a[1]; marksDrawn = -1; },
-    setCam: c => { window.__dbgCam = c; if (window.__redraw) window.__redraw.kick(800); }, setSite, deckWalk: t => deckWalk(t ?? deckT), get site3() { return SITE3; }, setTargets, activateTarget, setCardTargets: list => { CARD_PREV = list || []; }, setRounds: n => { NR = n; }, aimNudge, setAimHold: on => { holding = !!on; }, breathChart: on => { chartOn = !!on; drawChart(); }, fireLive, getDial: () => ({ elev: ELEV, wind: WIND }), setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
+    setWithdraw, get targetDown() { return !!deckFall; }, setCam: c => { window.__dbgCam = c; if (window.__redraw) window.__redraw.kick(800); }, setSite, deckWalk: t => deckWalk(t ?? deckT), get site3() { return SITE3; }, setTargets, activateTarget, setCardTargets: list => { CARD_PREV = list || []; }, setRounds: n => { NR = n; }, aimNudge, setAimHold: on => { holding = !!on; }, breathChart: on => { chartOn = !!on; drawChart(); }, fireLive, getDial: () => ({ elev: ELEV, wind: WIND }), setKestrelInset: c => kesInset.set(c), kestrelInsetSide: s_ => kesInset.side(s_), pickAt, highlight, cardTargetPx, nameOf, shotResult: n => { const im = impact(n); return { x: im[0], y: im[1], hit: onPlate(im) }; }, get cond() { return { ...COND, elev: ELEV, wind: WIND }; } };
   { const kick = () => window.__redraw && window.__redraw.kick(600);
     for (const k of ["seek", "holdAt", "play", "pause", "playRange", "cancelRange"]) { const f = tl[k].bind(tl); tl[k] = (...a) => { kick(); return f(...a); }; }
     for (const [k, v] of Object.entries(Object.getOwnPropertyDescriptors(window.__demo))) if (typeof v.value === "function") {

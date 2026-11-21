@@ -32,50 +32,38 @@
  "d1": {
   "file": "d1.mp3",
   "who": "spotter",
-  "duration": 3.52,
-  "text": "Cel — człowiek na trybunie, w narożniku pomostu."
+  "duration": 4.72,
+  "text": "Cel: człowiek na trybunie, dystans 600. Potwierdź cel."
  },
  "d2": {
   "file": "d2.mp3",
   "who": "shooter",
-  "duration": 0.8,
-  "text": "Cel."
- },
- "d3": {
-  "file": "d3.mp3",
-  "who": "spotter",
-  "duration": 2.0,
-  "text": "Odległość — 600."
- },
- "d4": {
-  "file": "d4.mp3",
-  "who": "shooter",
-  "duration": 0.96,
-  "text": "600."
+  "duration": 3.28,
+  "text": "Potwierdzam, człowiek na trybunie, 600 m."
  },
  "d5": {
   "file": "d5.mp3",
   "who": "spotter",
-  "duration": 1.92,
-  "text": "Podniesienie — 6,0."
+  "duration": 3.04,
+  "text": "Podniesienie: 6,0 milsa."
  },
  "d6": {
   "file": "d6.mp3",
   "who": "shooter",
-  "duration": 0.8,
-  "text": "6,0."
+  "duration": 2.24,
+  "text": "6,0 milsa."
  },
  "d7": {
   "file": "d7.mp3",
   "who": "spotter",
-  "duration": 2.24,
-  "text": "Wiatr — 0,8 w lewo."
+  "duration": 3.2,
+  "text": "Wiatr: 1,3 milsa w lewo."
  },
  "d8": {
   "file": "d8.mp3",
   "who": "shooter",
-  "duration": 1.6,
-  "text": "0,8 w lewo."
+  "duration": 2.24,
+  "text": "1,3 milsa w lewo."
  },
  "d9": {
   "file": "d9.mp3",
@@ -101,46 +89,28 @@
   "duration": 0.88,
   "text": "Ognia."
  },
- "d13": {
-  "file": "d13.mp3",
-  "who": "spotter",
-  "duration": 2.4,
-  "text": "Pudło. W lewo 0,5."
- },
- "d14": {
-  "file": "d14.mp3",
-  "who": "shooter",
-  "duration": 1.92,
-  "text": "W lewo 0,5."
- },
- "n5": {
-  "file": "n5.mp3",
-  "who": "narrator",
-  "duration": 9.68,
-  "text": "Wiatr był silniejszy, niż ocenił obserwator, i pocisk przeszedł po prawej. Obserwator podaje poprawkę, strzelec ją powtarza i ustawia na bębnie."
- },
- "d15": {
-  "file": "d15.mp3",
-  "who": "spotter",
-  "duration": 0.88,
-  "text": "Ognia."
- },
  "d16": {
   "file": "d16.mp3",
   "who": "spotter",
-  "duration": 0.88,
-  "text": "Trafienie."
+  "duration": 1.52,
+  "text": "Cel zlikwidowany."
  },
  "n6": {
   "file": "n6.mp3",
   "who": "narrator",
-  "duration": 4.96,
-  "text": "Drugi strzał trafia. Obserwator ocenia trafienie i para kończy zadanie."
+  "duration": 7.04,
+  "text": "Pierwszy strzał trafia, cel pada. Para nie czeka: wycofuje się czołgając, nisko, w głąb lasu."
  },
  "t_ready": {
   "file": "t_ready.mp3",
   "who": "shooter",
   "duration": 1.44,
   "text": "Strzelec gotowy."
+ },
+ "n7": {
+  "file": "n7.mp3",
+  "who": "narrator",
+  "duration": 6.0,
+  "text": "Pięćdziesiąt metrów dalej wstają i odchodzą między drzewami. Z trybuny nikt ich nie widział."
  }
 }

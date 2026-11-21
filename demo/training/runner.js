@@ -150,7 +150,7 @@ export async function startTask(mode, ctx, opts = {}) {
       } else if (st.kind === "sequence") {
         // the classic dialogue (scenario 3): the spotter's calls in random order; the trainee picks them in turn, the
         // shooter answers (author, 21 XI; sniperTAK FireDialogScript.CLASSIC)
-        const lines = st.lines(c), echo = [ "Cel.", `${c.ownRange ?? c.range}.`, lines[2].replace(/^Podniesienie — /, ""), lines[3].replace(/^Wiatr — /, ""), null ];
+        const lines = st.lines(c), echo = [ `Potwierdzam, człowiek na trybunie, ${c.ownRange ?? c.range} m.`, lines[1].replace(/^Podniesienie: /, ""), lines[2].replace(/^Wiatr: /, ""), null ];
         const talk = document.createElement("div"); talk.style.cssText = "flex-basis:100%;font:15px/1.5 system-ui;margin:4px 0";
         const box = document.createElement("div"); box.className = "choices"; box.style.flexBasis = "100%"; let k = 0;
         const order = [...lines]; for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
@@ -158,8 +158,8 @@ export async function startTask(mode, ctx, opts = {}) {
         for (const o of order) { const b = document.createElement("button"); b.textContent = o;
           b.onclick = async () => { if (o !== lines[k]) { wrong(o); return; }
             b.disabled = true; add("Obserwator", o); const e = echo[k];
-            if (e) { add("Strzelec", e); if (k === 0) say3("d2"); }
-            if (k === 3) { add("Strzelec", "Strzelec gotowy."); say3("t_ready"); }
+            if (e) add("Strzelec", e);
+            if (k === 2) { add("Strzelec", "Strzelec gotowy."); say3("t_ready"); }
             k++; if (k === lines.length) right("dialog w kolejności"); }; box.append(b); }
         view.body.append(talk, box);
       } else if (st.kind === "wind") {
@@ -231,6 +231,7 @@ export async function startTask(mode, ctx, opts = {}) {
           if (st.whenStopped && !demo.deckWalk().stop) { moving++; view.feedback("Instruktor idzie: strzał tylko na „Ognia.”, gdy stoi.", "bad"); demo.setAimHold(false); return; }
           busy = true; demo.breathChart(false);
           const r = await demo.fireLive(st.shots[k]); if (done) return; res.push(r); k++; ammo--; c.lastHit = r.hit;
+          if (st.whenStopped && r.hit) { view.feedback("Obserwator: Cel zlikwidowany.", "ok"); say3("d16"); }
           if (st.stop) count.textContent = `Cel nr ${st.tgt + 1} · trafienia ${nHit()}/${st.stop.hits} · pudła ${nMiss()}/${st.stop.misses} · naboje: ${ammo}`;   // the score at once
           if (over()) { demo.setAimSway(false); if (st.last !== false) demo.setKestrelInset(null);   // after the very last shot the Kestrel goes away
             const hits = res.filter(x => x.hit).length;
@@ -272,7 +273,7 @@ export async function startTask(mode, ctx, opts = {}) {
     if (st.kind === "mark") return st.angleOnly ? `kierunek: godzina ${c.clock ?? 12}` : `cel na łuku ${c.range} m, na godzinie ${c.clock ?? 12}`;
     if (st.kind === "wind") return `${f1(c.wind)} m/s, ${resolve(st.correct, c).toLowerCase()}`;
     if (st.kind === "fire" || st.kind === "find") return "";
-    if (st.kind === "sequence") return "cel, odległość, podniesienie, wiatr, „Obserwator gotowy.”";
+    if (st.kind === "sequence") return "cel z dystansem, podniesienie, wiatr (w milsach), „Obserwator gotowy.”";
     const d = tableDope(c, tab); return `ok. ${f1(d.elev)} ↑ · ${f1(Math.abs(d.wind))} ${d.wind >= 0 ? "L" : "P"}`;
   };
   // scenario 2: each target trafiony (two hits) or nietrafiony (two misses - also after one hit), or skipped
