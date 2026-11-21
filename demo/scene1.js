@@ -913,7 +913,10 @@ export async function play(ctx) {
         // the observer lies 1.1 m left of the shooter, level with him, his scope in front of his face
         const at = PRONE.clone().addScaledVector(left, 1.1); at.y = hAt(at.x, at.z);
         placeSoldier(observer, at, yawFwd, [["Prone_Fire", 0.5, 1]]);
-        const sp = at.clone().addScaledVector(fwd, 1.55).addScaledVector(left, 0.05); sp.y = hAt(sp.x, sp.z);
+        // the spotting scope's eyepiece a few centimetres in front of his eyes (author, 21 XI: it stood half a metre off);
+        // the model's origin is 0.31 m ahead of its rear end
+        observer.m.updateMatrixWorld(true); const head = observer.rig.B.Head.getWorldPosition(V());
+        const eye = head.clone().addScaledVector(fwd, 0.1), sp = eye.clone().addScaledVector(fwd, 0.06 + 0.31); sp.y = hAt(sp.x, sp.z);
         obsScope.position.copy(sp); obsScope.rotation.set(0, yawFwd + Math.PI, 0); };
       // the plants are laid out once, from the good place (the lines they keep clear are its), then the pair moves
       if (!bushGroup) { await place(0); bushes(true); }
