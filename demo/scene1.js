@@ -748,19 +748,21 @@ export async function play(ctx) {
       if (!best || score > best.score) best = { a, b, score }; }
     const inset = p => p.clone().add(C.clone().sub(p).setY(0).normalize().multiplyScalar(1.0));   // a metre in from the edge
     const A = inset(best.a), Bp = inset(best.b), mid = A.clone().add(Bp).multiplyScalar(0.5), deckY = st.deck;
-    // the deck's edge towards the forest is a solid parapet: only the head and shoulders show above it (author, 21 XI,
-    // checked from the pair's eye) - the aim and the hit area are there, 1.30-1.85 m above the deck
-    return { pair, A, B: Bp, mid, deckY, aim: mid.clone().setY(deckY + 1.55), len: A.distanceTo(Bp) };
+    // the edge towards the forest is mostly a solid parapet; only at its end B (the corner) does the whole instructor
+    // show from the pair's eye, feet to head (author, 21 XI: checked by rays) - he stops there, the range is measured
+    // from his 1.80 m and the aim is his chest
+    return { pair, A, B: Bp, mid: Bp.clone(), deckY, aim: Bp.clone().setY(deckY + 1.30), len: A.distanceTo(Bp) };
   })();
-  // the walk: A -> B -> A at 1.2 m/s, a 6 s stop at the middle on every pass, 1.5 s to turn at the ends
+  // the walk: A -> B at 1.2 m/s, a 6 s stop at B facing the forest, back to A, 1.5 s to turn there; over and over
   function deckWalk(t) {
-    const v = 1.2, half = SITE3.len / v, legT = half + 6 + 1.5, cyc = 2 * legT, u = ((t % cyc) + cyc) % cyc, leg = u < legT ? 0 : 1, w = u - leg * legT;
-    const from = leg ? SITE3.B : SITE3.A, to = leg ? SITE3.A : SITE3.B, dir = to.clone().sub(from).normalize();
-    const tMid = half / 2; let d, stop = false, turn = false;
-    if (w < tMid) d = w * v; else if (w < tMid + 6) { d = SITE3.len / 2; stop = true; } else if (w < half + 6) d = (w - 6) * v; else { d = SITE3.len; turn = true; }
-    const at = from.clone().addScaledVector(dir, Math.min(d, SITE3.len)).setY(SITE3.deckY);
-    const face = stop ? yawOf(SITE3.pair.clone().sub(at).setY(0)) : yawOf(turn ? dir.clone().negate() : dir);
-    return { at, yaw: face, stop, walk: d + leg * SITE3.len, clips: stop || turn ? [["Idle", t % 8, 1]] : [["Walking", ((d + leg * SITE3.len) / 1.35) % 1.0, 1]] };
+    const v = 1.2, legT = SITE3.len / v, cyc = 2 * legT + 6 + 1.5, u = ((t % cyc) + cyc) % cyc, dir = SITE3.B.clone().sub(SITE3.A).normalize();
+    let at, yaw, stop = false, turn = false, d;
+    if (u < legT) { d = u * v; at = SITE3.A.clone().addScaledVector(dir, d); yaw = yawOf(dir); }
+    else if (u < legT + 6) { d = SITE3.len; at = SITE3.B.clone(); stop = true; yaw = yawOf(SITE3.pair.clone().sub(SITE3.B).setY(0)); }
+    else if (u < 2 * legT + 6) { d = SITE3.len + (u - legT - 6) * v; at = SITE3.B.clone().addScaledVector(dir, -(u - legT - 6) * v); yaw = yawOf(dir.clone().negate()); }
+    else { d = 2 * SITE3.len; at = SITE3.A.clone(); turn = true; yaw = yawOf(dir); }
+    at.y = SITE3.deckY;
+    return { at, yaw, stop, walk: d, clips: stop || turn ? [["Idle", t % 8, 1]] : [["Walking", (d / 1.35) % 1.0, 1]] };
   }
   let deckT = 0, observer = null, obsScope = null;
   async function setSite(n, c) {
@@ -950,9 +952,9 @@ export async function play(ctx) {
     scopeDrag.yaw = cl(yw - (e.clientX - x0) * mpp); scopeDrag.pitch = cl(pt + (e.clientY - y0) * mpp); });
   const dragEnd = () => { if (scopeDrag) { scopeDrag.down = null; dragEl.style.cursor = "grab"; } };
   dragEl.addEventListener("pointerup", dragEnd); dragEl.addEventListener("pointercancel", dragEnd);
-  // the gong's plate; on site 3 the instructor's head and shoulders above the parapet (0.44 m wide, from 0.25 m below the
-  // aim to 0.30 m above it)
-  const onPlate = ([x, y]) => SITE === 3 ? Math.abs(x) <= 0.22 && y >= -0.25 && y <= 0.30 : Math.abs(x) <= 0.25 && Math.abs(y) <= 0.5;
+  // the gong's plate; on site 3 the instructor from the hips to the top of the head (0.44 m wide, 0.45 m below the chest
+  // aim to 0.50 m above it)
+  const onPlate = ([x, y]) => SITE === 3 ? Math.abs(x) <= 0.22 && y >= -0.45 && y <= 0.5 : Math.abs(x) <= 0.25 && Math.abs(y) <= 0.5;
   // miss: a puff of sand on the ground where the path meets it behind (or before) the gong
   // a miss hitting the ground (author, 18 XI: it looked like a grenade): sand grains thrown up to about 1 m and falling
   // back, each on its own ballistic path from a fixed seed (so scrubbing shows the same splash); points in pixels, so
