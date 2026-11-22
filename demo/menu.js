@@ -1,13 +1,11 @@
 // Menu background (author, 22 XI): while the welcome screen is up, the scene behind it plays at sunset (low sun,
-// orange clouds) and cuts every 20 s between two shots:
-// - the stand: from the field in front of it, Dziadek (the legendary instructor, a hidden character) standing at ease
-//   and strolling ~25 m from the camera
-// - the road on the left of the stand (seen from it): a group of four runners with rifles held overhead, jogging from
-//   the start of the range to its end, filmed from the side, from ahead and from behind in turn
+// orange clouds) in four shots (see "shots" below): Dziadek (the legendary instructor, a hidden character) strolling in
+// front of the stand; a group of four runners with rifles held overhead jogging along the road on the left of the
+// stand, seen from ~100 m; the same road seen from the stand; and a low camera by the road the group runs past.
 // It owns the camera and the frame only while the welcome screen is shown; start() / stop() are called by index.html
 // (stop before any lesson / training / exam starts, so their own hour and weather win).
 
-const SHOT_S = 20;                       // one shot, seconds
+const SHOT_S = 20;                       // one shot, seconds (the pass lasts until the group is by)
 const SUNSET = { hour: 18.5, decl: 8 };  // the sun on the horizon in the west-north-west, behind the stand (scene1 uses decl 8: September)
 const DAY = { hour: 10, decl: 8 };       // scene1's own light, given back on stop
 // the gravel road north-west of the range (picked on the orthophoto from above, 22 XI): from the junction behind the
@@ -73,18 +71,22 @@ export async function makeMenu(ctx) {
   const toStand = V(st.x - fp[0], 0, st.z - fp[2]); const dl = toStand.length(); toStand.normalize();
   const right = V(-toStand.z, 0, toStand.x);                                   // on the screen's right, looking at the stand
   const camA = V(fp[0], 0, fp[2]).addScaledVector(toStand, Math.min(8, dl * 0.3)); camA.y = hAt(camA.x, camA.z) + 1.3;
-  // Dziadek strolls to and fro across the frame, ~25 m from the camera (author, 22 XI: 20 m further back, walking,
-  // not standing): a casual walk along the stand's front, a few seconds at ease at each end, then he turns
+  // Dziadek strolls to and fro across the frame, ~8 m from the camera (author, 22 XI): a casual walk along the
+  // stand's front at the clip's own stride speed (0.7 m/s, measured on the planted foot - stride_test.html, so the
+  // feet do not slide), a few seconds at ease at each end facing the field, then back. Walk and idle are blended by
+  // hand every frame (three's crossFade disables the faded-out action, and the walk stayed off after the first turn)
   const dz = prep(dzG.scene); group.add(dz);
-  const dzMid = camA.clone().addScaledVector(toStand, 25.2).addScaledVector(right, 1.55), DZ_HALF = 6, DZ_V = 1.05, DZ_REST = 3;
+  const dzMid = camA.clone().addScaledVector(toStand, 8).addScaledVector(right, 1.0), DZ_HALF = 3, DZ_V = 0.7, DZ_REST = 3;
   const dzMix = new THREE.AnimationMixer(dz); mixers.push(dzMix);
   const dzWalk = dzMix.clipAction(dzG.animations.find(c => c.name === "Dz_Walk_Casual")), dzIdle = dzMix.clipAction(dzG.animations.find(c => c.name === "Dz_Idle"));
-  dzWalk.play(); dzIdle.play(); dzIdle.weight = 0;
-  const dzS = { x: -DZ_HALF, dir: 1, rest: 0, yaw: 0 };
+  dzWalk.play(); dzIdle.play();
+  const dzS = { x: -DZ_HALF, dir: 1, rest: 0, yaw: 0, w: 1 };
   const dzStep = dt => {
-    if (dzS.rest > 0) { dzS.rest -= dt; if (dzS.rest <= 0) { dzS.dir *= -1; dzWalk.crossFadeFrom(dzIdle, 0.5, false); dzWalk.weight = 1; } }
-    else { dzS.x += dzS.dir * DZ_V * dt;
-      if (Math.abs(dzS.x) >= DZ_HALF) { dzS.x = Math.sign(dzS.x) * DZ_HALF; dzS.rest = DZ_REST; dzIdle.reset(); dzIdle.crossFadeFrom(dzWalk, 0.5, false); dzIdle.weight = 1; } }
+    if (dzS.rest > 0) { dzS.rest -= dt; if (dzS.rest <= 0) dzS.dir *= -1; }
+    else { dzS.x += dzS.dir * DZ_V * dzS.w * dt;
+      if (Math.abs(dzS.x) >= DZ_HALF) { dzS.x = Math.sign(dzS.x) * DZ_HALF; dzS.rest = DZ_REST; } }
+    dzS.w += ((dzS.rest > 0 ? 0 : 1) - dzS.w) * Math.min(1, dt * 3);
+    dzWalk.setEffectiveWeight(dzS.w); dzIdle.setEffectiveWeight(1 - dzS.w);
     const p = dzMid.clone().addScaledVector(right, dzS.x); dz.position.set(p.x, hAt(p.x, p.z), p.z);
     const want = dzS.rest > 0 ? Math.atan2(-toStand.x, -toStand.z) : Math.atan2(right.x * dzS.dir, right.z * dzS.dir);   // at the ends he faces the field
     let d = want - dzS.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); dzS.yaw += d * Math.min(1, dt * 3); dz.rotation.y = dzS.yaw;
@@ -154,24 +156,44 @@ export async function makeMenu(ctx) {
       const w = 700 + rnd() * 1300; sp.scale.set(w, w * 0.22, 1); sp.position.set(st.x + Math.sin(a) * d, 180 + rnd() * 420 + d * 0.04, st.z + Math.cos(a) * d); group.add(sp); }
     const fill = new THREE.DirectionalLight(0xffc6a0, 0.9); fill.position.set(st.x - Math.sin(az0) * 100, st.y + 40, st.z - Math.cos(az0) * 100); fill.target.position.copy(st); group.add(fill, fill.target); }
 
-  // ---------- shots ----------
-  let on = false, t = 0, shot = -1, roadShot = 0, roadCam = null;
+  // ---------- shots (author, 22 XI) ----------
+  // 1 stand - Dziadek in front of the stand, 20 s
+  // 2 road  - the group ~100 m off, from the side, from ahead or from behind in turn, 20 s
+  // 3 from the stand - from the road's start by the stand, along the road to the group, a long lens, 20 s
+  // 4 pass  - a camera low on the ground by the road PASS_S m from the stand; the group comes at it from 50 m away and
+  //           runs past, then back to 1
+  const SHOTS = ["stand", "road", "fromStand", "pass"], PASS_S = 150, PASS_FROM = 50;
+  let on = false, idx = -1, shotT = 0, roadShot = 0, roadCam = null;
   const cam = { p: V(), look: V(), fov: 45 };
-  function cut(n) {
-    shot = n;
-    if (n % 2 === 0) { if (s > L) s = 0; return; }                               // the stand; the group starts again unseen
+  const kind = () => SHOTS[idx];
+  const roadAt = (sx, lat = 0) => { const u = THREE.MathUtils.clamp(sx / L, 0, 1), c = curve.getPointAt(u), tg = curve.getTangentAt(u).setY(0).normalize(), lt = V(tg.z, 0, -tg.x);
+    return c.addScaledVector(lt, ROAD_LEFT + lat).setY(0); };
+  function next() {
+    idx = (idx + 1) % SHOTS.length; shotT = 0;
+    if (kind() === "stand") { if (s > L) s = 0; return; }                        // the group starts again unseen
+    if (kind() === "pass") { s = PASS_S - PASS_FROM;                              // the group put 50 m before the camera (a cut)
+      const c = roadAt(PASS_S, -2.4), ahead = roadAt(PASS_S - 10); roadCam = { p: c.setY(hAt(c.x, c.z) + 0.3), ahead: ahead.setY(hAt(ahead.x, ahead.z) + 1.4) }; return; }
+    if (kind() === "fromStand") { const c = roadAt(0, -3); roadCam = { p: c.setY(hAt(c.x, c.z) + 4.5) }; return; }
     roadShot++;
-    const g = placeRunners();
-    const kind = ["side", "ahead", "behind"][roadShot % 3];
-    if (kind === "ahead") { const p = g.c.clone().addScaledVector(g.t, 155).addScaledVector(g.lt, -3.5); roadCam = { kind, p: p.setY(hAt(p.x, p.z) + 1.6) }; }
-    else roadCam = { kind };
+    const g = placeRunners(), k = ["side", "ahead", "behind"][roadShot % 3];
+    if (k === "ahead") { const p = g.c.clone().addScaledVector(g.t, 155).addScaledVector(g.lt, -3.5); roadCam = { kind: k, p: p.setY(hAt(p.x, p.z) + 1.6) }; }
+    else roadCam = { kind: k };
   }
+  const shotOver = () => kind() === "pass" ? s > PASS_S + 7 : shotT >= SHOT_S;
   function shotCamera() {
-    if (shot % 2 === 0) {                                                        // the stand: a slow push towards it
-      const k = Math.min(1, (t % SHOT_S) / SHOT_S);
+    const k = Math.min(1, shotT / SHOT_S);
+    if (kind() === "stand") {                                                     // a slow push towards the stand
       cam.p.copy(camA).addScaledVector(toStand, 1.0 * k); cam.look.set(st.x, st.y - 2.5, st.z).addScaledVector(right, 7); cam.fov = 50; return;
     }
-    const g = placeRunners(), mid = g.c.clone().addScaledVector(g.t, -1.4).add(V(0, 1.2, 0)), k = (t % SHOT_S) / SHOT_S;
+    const g = placeRunners(), mid = g.c.clone().addScaledVector(g.t, -1.4).add(V(0, 1.2, 0));
+    if (kind() === "fromStand") {                                                 // the group ~10 m tall in the frame, however far
+      const d = roadCam.p.distanceTo(mid); cam.p.copy(roadCam.p); cam.look.copy(mid); cam.fov = THREE.MathUtils.clamp(2 * Math.atan(5 / d) * 180 / Math.PI, 2.5, 45); return;
+    }
+    if (kind() === "pass") {                                                      // low and wide; follows them as they pass
+      cam.p.copy(roadCam.p); cam.fov = 55;
+      const f = THREE.MathUtils.clamp((s - (PASS_S - 12)) / 18, 0, 1);            // from the road ahead to the group beside and past
+      cam.look.copy(roadCam.ahead).lerp(mid, 0.35 + 0.65 * f); return;
+    }
     if (roadCam.kind === "side") { cam.p.copy(mid).addScaledVector(g.lt, -108.5 + 2 * k).addScaledVector(g.t, 4 - 7 * k).add(V(0, 1.5, 0)); cam.look.copy(mid); cam.fov = 40; }
     else if (roadCam.kind === "ahead") { cam.p.copy(roadCam.p); cam.look.copy(mid); cam.fov = 40; }
     else { cam.p.copy(mid).addScaledVector(g.t, -107).addScaledVector(g.lt, 2.2).add(V(0, 1.8, 0)); cam.look.copy(mid).addScaledVector(g.t, 6); cam.fov = 45; }
@@ -190,9 +212,9 @@ export async function makeMenu(ctx) {
 
   const hook = dt => {
     if (!on) return;
-    t += dt;
-    const n = Math.floor(t / SHOT_S); if (n !== shot) cut(n);
-    s += speed * dt; if (shot % 2 === 1 || s <= L + 60) placeRunners();
+    shotT += dt; s += speed * dt;
+    if (idx < 0 || shotOver()) next();
+    placeRunners();
     dzStep(dt); for (const m of mixers) m.update(dt);
     shotCamera();
     camera.position.copy(cam.p); camera.up.set(0, 1, 0); camera.lookAt(cam.look); camera.fov = cam.fov; camera.updateProjectionMatrix();
@@ -203,10 +225,11 @@ export async function makeMenu(ctx) {
   window.__demoState = () => on ? "busy" : prevState ? prevState() : "idle";
 
   const api = {
-    start() { if (on) return; on = true; t = 0; shot = -1; group.visible = true; sunsetOn(); document.getElementById("welcome")?.classList.add("live"); document.documentElement.classList.add("menuLive"); if (window.__redraw) window.__redraw.kick(1000); },
+    start() { if (on) return; on = true; idx = -1; shotT = 0; group.visible = true; sunsetOn(); document.getElementById("welcome")?.classList.add("live"); document.documentElement.classList.add("menuLive"); if (window.__redraw) window.__redraw.kick(1000); },
     stop() { if (!on) return; on = false; group.visible = false; sunsetOff(); document.getElementById("welcome")?.classList.remove("live"); document.documentElement.classList.remove("menuLive"); if (window.__redraw) window.__redraw.kick(1000); },
-    get on() { return on; }, get shot() { return shot; }, jump(sec) { t = sec; }, loop, speed, L,
-    setRoad(sec) { s = sec * speed; },
+    get on() { return on; }, get shot() { return kind(); }, loop, speed, L,
+    goShot(i, road) { idx = (i + SHOTS.length - 1) % SHOTS.length; next(); if (road != null) s = road; },   // test hook: shot i (0..3), the group at road m
+    get road() { return s; },
   };
   return api;
 }
