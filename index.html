@@ -14,6 +14,9 @@
   #welcome { display: none; position: fixed; inset: 0; z-index: 400; flex-direction: column; align-items: center; justify-content: flex-start; gap: 28px; padding: 6vh 4vw 4vh; box-sizing: border-box; overflow-y: auto;
     background: linear-gradient(180deg, rgba(8,10,12,.72) 0%, rgba(8,10,12,.35) 40%, rgba(8,10,12,.82) 100%), url(welcome.jpg) center / cover no-repeat #1b1f23; color: #eee; font-family: system-ui, sans-serif; }
   .app #welcome { display: flex; } .app #welcome.hidden { display: none; }
+  /* the live menu background (demo/menu.js): the scene shows through, darkened only at the top and the bottom */
+  html.menuLive body > :not(canvas):not(#welcome) { visibility: hidden !important; }   /* the lesson's panels stay under the menu */
+  #welcome.live { background: linear-gradient(180deg, rgba(8,10,12,.55) 0%, rgba(8,10,12,0) 30%, rgba(8,10,12,0) 55%, rgba(8,10,12,.7) 100%); }
   #welcome h1 { margin: 0; font: 800 clamp(44px, 8vw, 84px)/1 system-ui; letter-spacing: .06em; color: #f2c94c; text-shadow: 0 4px 24px rgba(0,0,0,.6); }
   #welcome .by { margin-top: 8px; font: 14px system-ui; color: #d8d2c0; letter-spacing: .04em; text-align: center; }
   #welcome .cards { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; margin-top: auto; width: min(1180px, 100%); }
@@ -93,12 +96,12 @@
   let wait = null, pct = "";
   const NAME = { lesson: "lekcję", train: "trening", exam: "egzamin" };
   window.__welcomeWaitDone = () => { if (wait) { wait.remove(); wait = null; } };
-  window.showWelcome = () => { window.__welcomeWaitDone(); W.classList.remove("hidden"); menu.classList.remove("on"); };
+  window.showWelcome = () => { window.__welcomeWaitDone(); W.classList.remove("hidden"); menu.classList.remove("on"); if (window.__menu) window.__menu.start(); };
   window.__welcomeProgress = f => { pct = f >= 1 ? "" : `${Math.round(f * 100)}%`;
     const e = document.getElementById("wLoad"); if (e) e.textContent = f >= 1 ? "" : `Wczytywanie symulatora… ${pct}`;
     if (wait) wait.querySelector(".p").textContent = pct ? `Wczytywanie symulatora… ${pct}` : "Uruchamiam…"; };
   W.querySelectorAll("button[data-m]").forEach(b => b.onclick = () => { const a = [b.dataset.m, +b.dataset.s];
-    W.classList.add("hidden"); menu.classList.add("on");
+    W.classList.add("hidden"); menu.classList.add("on"); if (window.__menu) window.__menu.stop();   // the menu's sunset off before the choice sets its light
     if (window.__welcomeAct) { window.__welcomeAct(...a); return; }
     window.__welcomePending = a;
     if (!wait) { wait = document.createElement("div"); wait.id = "wWait"; document.body.append(wait); }
