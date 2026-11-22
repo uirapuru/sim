@@ -158,7 +158,7 @@ export async function makeMenu(ctx) {
 
   // ---------- shots (author, 22 XI) ----------
   // 1 stand - Dziadek in front of the stand, 20 s
-  // 2 road  - the group ~100 m off, from the side, from ahead or from behind in turn, 20 s
+  // 2 road  - the group ~50 m off (author, 22 XI: half of 100 m), from the side, from ahead or from behind in turn, 20 s
   // 3 from the stand - from the road's start by the stand, along the road to the group, a long lens, 20 s
   // 4 pass  - a camera low on the ground by the road PASS_S m from the stand; the group comes at it from 50 m away and
   //           runs past, then back to 1
@@ -176,7 +176,7 @@ export async function makeMenu(ctx) {
     if (kind() === "fromStand") { const c = roadAt(0, -3); roadCam = { p: c.setY(hAt(c.x, c.z) + 4.5) }; return; }
     roadShot++;
     const g = placeRunners(), k = ["side", "ahead", "behind"][roadShot % 3];
-    if (k === "ahead") { const p = g.c.clone().addScaledVector(g.t, 155).addScaledVector(g.lt, -3.5); roadCam = { kind: k, p: p.setY(hAt(p.x, p.z) + 1.6) }; }
+    if (k === "ahead") { const p = g.c.clone().addScaledVector(g.t, 78).addScaledVector(g.lt, -3.5); roadCam = { kind: k, p: p.setY(hAt(p.x, p.z) + 1.6) }; }
     else roadCam = { kind: k };
   }
   const shotOver = () => kind() === "pass" ? s > PASS_S + 7 : shotT >= SHOT_S;
@@ -194,9 +194,9 @@ export async function makeMenu(ctx) {
       const f = THREE.MathUtils.clamp((s - (PASS_S - 12)) / 18, 0, 1);            // from the road ahead to the group beside and past
       cam.look.copy(roadCam.ahead).lerp(mid, 0.35 + 0.65 * f); return;
     }
-    if (roadCam.kind === "side") { cam.p.copy(mid).addScaledVector(g.lt, -108.5 + 2 * k).addScaledVector(g.t, 4 - 7 * k).add(V(0, 1.5, 0)); cam.look.copy(mid); cam.fov = 40; }
+    if (roadCam.kind === "side") { cam.p.copy(mid).addScaledVector(g.lt, -54 + 2 * k).addScaledVector(g.t, 4 - 7 * k).add(V(0, 1.5, 0)); cam.look.copy(mid); cam.fov = 40; }
     else if (roadCam.kind === "ahead") { cam.p.copy(roadCam.p); cam.look.copy(mid); cam.fov = 40; }
-    else { cam.p.copy(mid).addScaledVector(g.t, -107).addScaledVector(g.lt, 2.2).add(V(0, 1.8, 0)); cam.look.copy(mid).addScaledVector(g.t, 6); cam.fov = 45; }
+    else { cam.p.copy(mid).addScaledVector(g.t, -53.5).addScaledVector(g.lt, 2.2).add(V(0, 1.8, 0)); cam.look.copy(mid).addScaledVector(g.t, 6); cam.fov = 45; }
     const gy = hAt(cam.p.x, cam.p.z) + 0.4; if (cam.p.y < gy) cam.p.y = gy;
   }
 
