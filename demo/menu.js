@@ -167,7 +167,7 @@ export async function makeMenu(ctx) {
     const mat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a, fog: false });   // black silhouettes, no haze (author, 22 XI)
     const blade = new THREE.Shape(); blade.moveTo(0, -1.2); blade.lineTo(55, -0.4); blade.lineTo(55, 0.3); blade.lineTo(0, 1.6); blade.lineTo(0, -1.2);
     const bladeGeo = new THREE.ExtrudeGeometry(blade, { depth: 0.5, bevelEnabled: false });
-    [[10, 2300, 0.3], [17, 2700, 1.4], [25, 2450, 0.9]].forEach(([deg, d, phase]) => {
+    [[21, 2300, 0.3], [28, 2700, 1.4], [36, 2450, 0.9]]   /* degrees right of the stand (author, 22 XI: further right) */.forEach(([deg, d, phase]) => {
       const a = deg * Math.PI / 180, dir = dS.clone().multiplyScalar(Math.cos(a)).addScaledVector(rgt, Math.sin(a)), p = cam0.clone().addScaledVector(dir, d);
       const tb = new THREE.Group(); tb.position.set(p.x, hAt(p.x, p.z) - 4, p.z); tb.scale.setScalar(2);   // twice the size (author, 22 XI)
       const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 3.0, 110, 12), mat); tower.position.y = 55; tb.add(tower);
