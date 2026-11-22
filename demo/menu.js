@@ -162,14 +162,14 @@ export async function makeMenu(ctx) {
     return c.addScaledVector(lt, ROAD_LEFT + lat).setY(0); };
 
   // three wind turbines far off (author, 22 XI): in the pass shot, right of the stand, 2.3-2.7 km away; still (not
-  // turning), plain white shapes that the haze and the sunset turn into pale silhouettes. Hub at 110 m, blades 55 m
+  // turning), black silhouettes; drawn twice the real size (hub at 220 m, blades 110 m) to read at that distance
   { const cam0 = roadAt(PASS_S, PASS_LAT), dS = V(st.x - cam0.x, 0, st.z - cam0.z).normalize(), rgt = V(-dS.z, 0, dS.x);
-    const mat = new THREE.MeshLambertMaterial({ color: 0xe8e8e4 });
+    const mat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a, fog: false });   // black silhouettes, no haze (author, 22 XI)
     const blade = new THREE.Shape(); blade.moveTo(0, -1.2); blade.lineTo(55, -0.4); blade.lineTo(55, 0.3); blade.lineTo(0, 1.6); blade.lineTo(0, -1.2);
     const bladeGeo = new THREE.ExtrudeGeometry(blade, { depth: 0.5, bevelEnabled: false });
     [[10, 2300, 0.3], [17, 2700, 1.4], [25, 2450, 0.9]].forEach(([deg, d, phase]) => {
       const a = deg * Math.PI / 180, dir = dS.clone().multiplyScalar(Math.cos(a)).addScaledVector(rgt, Math.sin(a)), p = cam0.clone().addScaledVector(dir, d);
-      const tb = new THREE.Group(); tb.position.set(p.x, hAt(p.x, p.z) - 2, p.z);
+      const tb = new THREE.Group(); tb.position.set(p.x, hAt(p.x, p.z) - 4, p.z); tb.scale.setScalar(2);   // twice the size (author, 22 XI)
       const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 3.0, 110, 12), mat); tower.position.y = 55; tb.add(tower);
       const head = new THREE.Group(); head.position.y = 110; head.rotation.y = Math.atan2(-dir.x, -dir.z) + (phase - 0.8) * 0.5; tb.add(head);   // rotor roughly towards the camera
       const nac = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.8, 11), mat); nac.position.z = -2.5; head.add(nac);
