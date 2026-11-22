@@ -5,6 +5,8 @@
 // It owns the camera and the frame only while the welcome screen is shown; start() / stop() are called by index.html
 // (stop before any lesson / training / exam starts, so their own hour and weather win).
 
+const PASS_S = 150, PASS_FROM = 50;     // the pass shot: the low camera this far along the road, the group starts this far before it
+const PASS_LAT = -1.6;                   // ... on the road's right edge: off it the full graphics' grass fills the low lens
 const SHOT_S = 20;                       // one shot, seconds (the pass lasts until the group is by)
 const SUNSET = { hour: 18.5, decl: 8 };  // the sun on the horizon in the west-north-west, behind the stand (scene1 uses decl 8: September)
 const DAY = { hour: 10, decl: 8 };       // scene1's own light, given back on stop
@@ -156,23 +158,42 @@ export async function makeMenu(ctx) {
       const w = 700 + rnd() * 1300; sp.scale.set(w, w * 0.22, 1); sp.position.set(st.x + Math.sin(a) * d, 180 + rnd() * 420 + d * 0.04, st.z + Math.cos(a) * d); group.add(sp); }
     const fill = new THREE.DirectionalLight(0xffc6a0, 0.9); fill.position.set(st.x - Math.sin(az0) * 100, st.y + 40, st.z - Math.cos(az0) * 100); fill.target.position.copy(st); group.add(fill, fill.target); }
 
+  const roadAt = (sx, lat = 0) => { const u = THREE.MathUtils.clamp(sx / L, 0, 1), c = curve.getPointAt(u), tg = curve.getTangentAt(u).setY(0).normalize(), lt = V(tg.z, 0, -tg.x);
+    return c.addScaledVector(lt, ROAD_LEFT + lat).setY(0); };
+
+  // three wind turbines far off (author, 22 XI): in the pass shot, right of the stand, 2.3-2.7 km away; still (not
+  // turning), plain white shapes that the haze and the sunset turn into pale silhouettes. Hub at 110 m, blades 55 m
+  { const cam0 = roadAt(PASS_S, PASS_LAT), dS = V(st.x - cam0.x, 0, st.z - cam0.z).normalize(), rgt = V(-dS.z, 0, dS.x);
+    const mat = new THREE.MeshLambertMaterial({ color: 0xe8e8e4 });
+    const blade = new THREE.Shape(); blade.moveTo(0, -1.2); blade.lineTo(55, -0.4); blade.lineTo(55, 0.3); blade.lineTo(0, 1.6); blade.lineTo(0, -1.2);
+    const bladeGeo = new THREE.ExtrudeGeometry(blade, { depth: 0.5, bevelEnabled: false });
+    [[10, 2300, 0.3], [17, 2700, 1.4], [25, 2450, 0.9]].forEach(([deg, d, phase]) => {
+      const a = deg * Math.PI / 180, dir = dS.clone().multiplyScalar(Math.cos(a)).addScaledVector(rgt, Math.sin(a)), p = cam0.clone().addScaledVector(dir, d);
+      const tb = new THREE.Group(); tb.position.set(p.x, hAt(p.x, p.z) - 2, p.z);
+      const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 3.0, 110, 12), mat); tower.position.y = 55; tb.add(tower);
+      const head = new THREE.Group(); head.position.y = 110; head.rotation.y = Math.atan2(-dir.x, -dir.z) + (phase - 0.8) * 0.5; tb.add(head);   // rotor roughly towards the camera
+      const nac = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.8, 11), mat); nac.position.z = -2.5; head.add(nac);
+      const hub = new THREE.Mesh(new THREE.SphereGeometry(2.1, 12, 8), mat); hub.position.z = 3.4; head.add(hub);
+      for (let k = 0; k < 3; k++) { const b = new THREE.Mesh(bladeGeo, mat); b.position.z = 3.6; b.rotation.z = phase + k * 2 * Math.PI / 3; head.add(b); }
+      tb.traverse(o => { if (o.isMesh) o.castShadow = false; }); group.add(tb); }); }
+
   // ---------- shots (author, 22 XI) ----------
   // 1 stand - Dziadek in front of the stand, 20 s
   // 2 road  - the group ~50 m off (author, 22 XI: half of 100 m), from the side, from ahead or from behind in turn, 20 s
   // 3 from the stand - from the road's start by the stand, along the road to the group, a long lens, 20 s
   // 4 pass  - a camera low on the ground by the road PASS_S m from the stand; the group comes at it from 50 m away and
   //           runs past, then back to 1
-  const SHOTS = ["stand", "road", "fromStand", "pass"], PASS_S = 150, PASS_FROM = 50;
+  const SHOTS = ["stand", "road", "fromStand", "pass"];
   let on = false, idx = -1, shotT = 0, roadShot = 0, roadCam = null;
   const cam = { p: V(), look: V(), fov: 45 };
   const kind = () => SHOTS[idx];
-  const roadAt = (sx, lat = 0) => { const u = THREE.MathUtils.clamp(sx / L, 0, 1), c = curve.getPointAt(u), tg = curve.getTangentAt(u).setY(0).normalize(), lt = V(tg.z, 0, -tg.x);
-    return c.addScaledVector(lt, ROAD_LEFT + lat).setY(0); };
   function next() {
     idx = (idx + 1) % SHOTS.length; shotT = 0;
+    window.__grassClear = null; if (window.__grassReset) window.__grassReset();
     if (kind() === "stand") { if (s > L) s = 0; return; }                        // the group starts again unseen
     if (kind() === "pass") { s = PASS_S - PASS_FROM;                              // the group put 50 m before the camera (a cut)
-      const c = roadAt(PASS_S, -2.4), ahead = roadAt(PASS_S - 10); roadCam = { p: c.setY(hAt(c.x, c.z) + 0.3), ahead: ahead.setY(hAt(ahead.x, ahead.z) + 1.4) }; return; }
+      const c = roadAt(PASS_S, PASS_LAT), ahead = roadAt(PASS_S - 10); roadCam = { p: c.setY(hAt(c.x, c.z) + 0.45), ahead: ahead.setY(hAt(ahead.x, ahead.z) + 1.4) };
+      window.__grassClear = { x: c.x, z: c.z, r: 6 }; if (window.__grassReset) window.__grassReset(); return; }   // no blades in front of the low lens (full graphics)
     if (kind() === "fromStand") { const c = roadAt(0, -3); roadCam = { p: c.setY(hAt(c.x, c.z) + 4.5) }; return; }
     roadShot++;
     const g = placeRunners(), k = ["side", "ahead", "behind"][roadShot % 3];
@@ -226,7 +247,7 @@ export async function makeMenu(ctx) {
 
   const api = {
     start() { if (on) return; on = true; idx = -1; shotT = 0; group.visible = true; sunsetOn(); document.getElementById("welcome")?.classList.add("live"); document.documentElement.classList.add("menuLive"); if (window.__redraw) window.__redraw.kick(1000); },
-    stop() { if (!on) return; on = false; group.visible = false; sunsetOff(); document.getElementById("welcome")?.classList.remove("live"); document.documentElement.classList.remove("menuLive"); if (window.__redraw) window.__redraw.kick(1000); },
+    stop() { if (!on) return; on = false; window.__grassClear = null; if (window.__grassReset) window.__grassReset(); group.visible = false; sunsetOff(); document.getElementById("welcome")?.classList.remove("live"); document.documentElement.classList.remove("menuLive"); if (window.__redraw) window.__redraw.kick(1000); },
     get on() { return on; }, get shot() { return kind(); }, loop, speed, L,
     goShot(i, road) { idx = (i + SHOTS.length - 1) % SHOTS.length; next(); if (road != null) s = road; },   // test hook: shot i (0..3), the group at road m
     get road() { return s; },

@@ -329,6 +329,7 @@ const grass = new THREE.InstancedMesh(tuft, grassMat, GRASS_N);
 grass.frustumCulled = false;
 scene.add(grass);
 const grassCenter = new THREE.Vector2(1e9, 1e9);
+window.__grassReset = () => grassCenter.set(1e9, 1e9);           // placed again around the camera on the next frame
 function placeGrass(cx, cz) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), c = new THREE.Color();
   let n = 0;
@@ -337,6 +338,7 @@ function placeGrass(cx, cz) {
     const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
     if (!inNear(x, z)) continue;
     if (Math.hypot(x - meta.positions.firing_point[0], z - meta.positions.firing_point[2]) < 55) continue;   // mown firing point (author, 16 XI)
+    const gc = window.__grassClear; if (gc && Math.hypot(x - gc.x, z - gc.z) < gc.r) continue;   // a clearing (menu.js: the low camera by the road)
     const [R, G, B] = orthoRGB(x, z);
     const bright = (R + G + B) / 3;
     if (bright > 150 || (bright > 125 && rnd() < 0.7)) continue;      // roads, sand
